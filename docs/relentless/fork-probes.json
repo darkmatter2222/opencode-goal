@@ -1,0 +1,35 @@
+{
+  "commit": "586e7ce3cf3a9105c7389310cc929ec1ed5e2bad",
+  "results": [
+    {
+      "name": "three idle closures pause with zero completed turns",
+      "status": "paused",
+      "turns": 0
+    },
+    {
+      "name": "two empty completions pause",
+      "status": "paused"
+    },
+    {
+      "name": "model wait requires no dependency evidence",
+      "status": "waiting_user"
+    },
+    {
+      "name": "nonconsecutive reports with intervening progress still block",
+      "status": "blocked"
+    },
+    {
+      "name": "help and empty command lack navigation behavior",
+      "help": "create",
+      "emptyObjective": ""
+    },
+    {
+      "name": "second edit of dirty file invisible to shell marker",
+      "sameMarker": true
+    },
+    {
+      "name": "8192 minimum reserve marks 4096 window full at one input token",
+      "reason": "Host-observed model context pressure is 0.0% (1 / 4096 tokens) with 8192 tokens of required output/compaction headroom."
+    }
+  ]
+}
