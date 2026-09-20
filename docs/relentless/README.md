@@ -6,6 +6,7 @@ Reviewed fork: [darkmatter2222/opencode-goal](https://github.com/darkmatter2222/
 
 Start with [DESIGN.md](DESIGN.md). It supersedes the baseline's persistence policy: an impossible goal remains unfinished and scheduled indefinitely. The model cannot put the overall goal to sleep or change its success criteria.
 
+- [COMMANDS-AND-CONTINUITY.md](COMMANDS-AND-CONTINUITY.md): detailed command usage, native TUI integration, indefinite retry protocol and truthful status design.
 - [DESIGN.md](DESIGN.md): architecture, current-fork findings, command redesign, ten feature designs, implementation sequence, acceptance gates.
 - [baseline-1.3.31/AUDIT.md](baseline-1.3.31/AUDIT.md): detailed original 38-finding source audit. Historical fork-status statements and proposed automatic waiting policy are superseded by DESIGN.md.
 - [SOURCE-REVIEW.csv](SOURCE-REVIEW.csv): current production-source hashes and comparison to the audited 1.3.31 source.
