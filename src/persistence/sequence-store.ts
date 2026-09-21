@@ -43,6 +43,7 @@ function validQueuedGoal(value: unknown): value is QueuedGoalSpec {
   if (!value || typeof value !== "object") return false
   const item = value as Partial<QueuedGoalSpec>
   return typeof item.id === "string" && item.id.length > 0
+    && (item.persistent === undefined || typeof item.persistent === "boolean")
     && typeof item.objective === "string" && item.objective.trim().length > 0
     && Array.isArray(item.acceptance) && item.acceptance.every((entry) => typeof entry === "string")
     && Array.isArray(item.constraints) && item.constraints.every((entry) => typeof entry === "string")
@@ -166,6 +167,7 @@ export class GoalSequenceStore {
       const item: QueuedGoalSpec = {
         id: randomUUID(),
         objective,
+        ...(input.persistent ? { persistent: true } : {}),
         acceptance: normalizeStrings(input.acceptance),
         constraints: normalizeStrings(input.constraints),
         checks: normalizeStrings(input.checks),
@@ -247,6 +249,7 @@ export class GoalSequenceStore {
       const created = createGoal({
         sessionID,
         objective: queued.objective,
+        persistent: queued.persistent === true,
         acceptance: queued.acceptance,
         constraints: queued.constraints,
         checks: queued.checks,

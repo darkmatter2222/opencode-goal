@@ -34,15 +34,17 @@ export function installGoalCommandUX(input: Input, hooks: Hooks): void {
     if (ownedAliases.has(event.command)) args = `${event.command.slice(5)} ${args}`.trim()
     else if (event.command !== "goal") { await command?.(event, output); return }
     let [action = "", ...rest] = args.split(/\s+/)
-    if (!args || action === "help" || action === "--help" || action === "-h" || rest.includes("--help") || rest.includes("-h")) {
+    const literalCreate = action === "new" && rest[0] === "--"
+    if (!literalCreate && (!args || action === "help" || action === "--help" || action === "-h" || rest.includes("--help") || rest.includes("-h"))) {
       reply(event.sessionID, output, goalHelp(action === "help" ? rest[0] : action.startsWith("-") || !action ? undefined : action)); return
     }
     if (["edit", "new", "add", "restore"].includes(action) && !rest.length) {
       reply(event.sessionID, output, goalHelp(action)); return
     }
-    if (action === "new") args = args.slice(3).trim().replace(/^--\s*/, "")
-    else if (action === "stop") args = "clear"
-    else if (action === "proof") args = "audit"
+    if (["pause", "resume", "stop", "proof"].includes(action) && rest.length) { reply(event.sessionID, output, goalHelp(action)); return }
+    if (literalCreate && rest.length === 1) { reply(event.sessionID, output, goalHelp("new")); return }
+    if (action === "stop") args = ["clear", ...rest].join(" ")
+    else if (action === "proof") args = ["audit", ...rest].join(" ")
     else if (["why", "attempts", "retry"].includes(action)) {
       if (rest.length) { reply(event.sessionID, output, goalHelp(action)); return }
       const goal = await store.load(event.sessionID)

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import Plugin from '../dist/index.js'
-import { createGoal, pauseGoal, waitForUserGoal } from '../dist/domain/goal.js'
+import { createGoal, editGoal, pauseGoal, waitForUserGoal } from '../dist/domain/goal.js'
 import { GoalStore } from '../dist/persistence/store.js'
 import { closeObservedTurn } from '../dist/runtime/progress.js'
 import { reportBlocker } from '../dist/runtime/blocker.js'
@@ -16,6 +16,10 @@ import { auditCompletion } from '../dist/verification/audit.js'
 import { GOAL_COMMANDS, goalHelp } from '../dist/opencode/command-help.js'
 const goal=()=>createGoal({sessionID:'s', objective:'1 + 1 = 3', persistent:true})
 const tick=()=>new Promise(r=>setTimeout(r,30))
+async function eventually(predicate) {
+ const deadline=Date.now()+5000
+ while(!await predicate()) {assert.ok(Date.now()<deadline,'observable state did not settle');await tick()}
+}
 async function fixture(fn) {
  const directory=await mkdtemp(path.join(os.tmpdir(),'relentless-'))
  let hooks
@@ -29,7 +33,7 @@ async function fixture(fn) {
   await fn({hooks,client,store,prompts,config,command,directory,setStatus:x=>status=x,setResponse:x=>response=x})
  }finally{
   await hooks?.event({event:{type:'server.instance.disposed',properties:{}}})
-  await tick();await rm(directory,{recursive:true,force:true})
+  await tick();await rm(directory,{recursive:true,force:true,maxRetries:5,retryDelay:50})
  }
 }
 test('persistent impossible objective stays unverified through 10000 failure observations',()=>{
@@ -94,7 +98,8 @@ test('scanner repairs a lost wake, respects busy host and does not revive user p
 }))
 test('provider errors retain the goal and persist a future retry',async()=>fixture(async f=>{
  await f.store.save({...goal(),nextWakeAt:0});f.setResponse({error:{message:'HTTP 503 unavailable'}})
- await reconcilePersistentGoals({directory:f.directory,client:f.client},f.hooks);await tick()
+ await reconcilePersistentGoals({directory:f.directory,client:f.client},f.hooks)
+ await eventually(async()=>Boolean((await f.store.load('s'))?.infrastructureRecovery?.nextRetryAt))
  const current=await f.store.load('s');assert.equal(current.status,'active');assert.ok(current.infrastructureRecovery.nextRetryAt>Date.now())
  await f.command('pause')
 }))
@@ -153,4 +158,41 @@ test('dead-process lease does not delay restart until its old deadline',async()=
  await f.store.save({...goal(),nextWakeAt:0,dispatchLease:{owner:'2147483647:dead',expiresAt:Date.now()+1800000}})
  await reconcilePersistentGoals({directory:f.directory,client:f.client},f.hooks)
  await tick();assert.equal(f.prompts.length,1)
+}))
+
+for (const objective of ['pause', 'clear', 'help', 'edit', 'fix --help output', 'status\n--check literal']) {
+ test(`literal new goal preserves objective: ${objective}`,async()=>fixture(async f=>{
+  await f.command(`-- ${objective}`,'goal-new')
+  const current=await f.store.load('s')
+  assert.equal(current.objective,objective);assert.equal(current.status,'active')
+ }))
+}
+test('invalid stop arguments cannot clear an existing goal',async()=>fixture(async f=>{
+ await f.command('existing objective')
+ const result=await f.command('stop extra')
+ assert.match(result.parts[0].text,/Usage: \/goal stop/)
+ assert.equal((await f.store.load('s')).objective,'existing objective')
+}))
+test('explicit new keeps structured check flags',async()=>fixture(async f=>{
+ await f.command('pause --check "npm test"','goal-new')
+ const current=await f.store.load('s')
+ assert.equal(current.objective,'pause');assert.deepEqual(current.checks,['npm test'])
+}))
+test('editing and promoting queued goals preserve persistent policy',async()=>fixture(async f=>{
+ await f.command('original objective');await f.command('edit revised objective')
+ assert.equal((await f.store.load('s')).persistent,true)
+ assert.equal(editGoal(goal(),{objective:'revised'}).persistent,true)
+ await f.command('add queued objective');await f.command('stop');await f.command('next')
+ const current=await f.store.load('s')
+ assert.equal(current.objective,'queued objective');assert.equal(current.persistent,true)
+}))
+test('tool rounds consume usage but only terminal messages consume Goal turns',async()=>fixture(async f=>{
+ const output=await f.command('ten distinct turns')
+ await f.hooks['chat.message']({sessionID:'s',messageID:'user',agent:'build'},{message:{id:'user'},parts:output.parts})
+ for(const [id,finish] of [['tool-1','tool-calls'],['tool-2','tool-calls'],['final','stop']]) {
+  await f.hooks.event({event:{type:'message.updated',properties:{info:{id,sessionID:'s',parentID:'user',role:'assistant',text:'meaningful',finish,time:{created:1,completed:2},tokens:{input:2,output:3},cost:0.01}}}})
+ }
+ const current=await f.store.load('s')
+ assert.equal(current.usage.turns,1);assert.equal(current.usage.tokens,15)
+ assert.equal(current.usage.cost,0.03);assert.equal(current.usage.seenMessageIDs.length,3)
 }))

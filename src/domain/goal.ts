@@ -129,6 +129,7 @@ export function editGoal(goal: GoalState, input: {
     .map((item) => ({ file: item.file!, ...(item.contains ? { contains: item.contains } : {}) }))
   const next = createGoal({
     sessionID: goal.sessionID,
+    persistent: goal.persistent === true,
     objective: input.objective,
     acceptance: input.acceptance ?? existingAcceptance(goal),
     constraints: input.constraints ?? existingConstraints(goal),

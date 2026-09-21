@@ -65,7 +65,7 @@ function selectorFailure(prefix: string, result: { reason: string; matches: Queu
   return "That queued Goal is currently being activated. Retry after activation settles."
 }
 
-export function installGoalSequence(input: PluginInput, hooks: PluginHooks): void {
+export function installGoalSequence(input: PluginInput, hooks: PluginHooks, persistent = false): void {
   const commandHook = hooks["command.execute.before"]
   const chatHook = hooks["chat.message"]
   const eventHook = hooks.event
@@ -113,6 +113,7 @@ export function installGoalSequence(input: PluginInput, hooks: PluginHooks): voi
       if (!parsed.objective) throw new Error("Usage: /goal add <objective> [Goal Contract options]")
       const result = await sequences.enqueue(event.sessionID, {
         objective: parsed.objective,
+        persistent,
         acceptance: parsed.acceptance,
         constraints: parsed.constraints,
         checks: parsed.checks,

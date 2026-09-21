@@ -19,6 +19,14 @@ async function waitFor(predicate, timeoutMs = 1000) {
   assert.fail("condition was not met before timeout")
 }
 
+async function waitForDispatchCleanup(root) {
+  const deadline = Date.now() + 5000
+  while ((await readOnlyGoal(root)).dispatchLease) {
+    assert.ok(Date.now() < deadline, "dispatch lease cleanup must finish")
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+
 async function readOnlyGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
   const files = await readdir(dir)
@@ -192,7 +200,7 @@ test("human message steers active goal, preempts a queued continuation, and keep
     await tick()
     assert.equal(fake.promptCount, 2, "Goal auto-continue resumes after the steering turn finishes")
     fake.pending[1].resolve({})
-    await tick()
+    await waitForDispatchCleanup(root)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -217,7 +225,7 @@ test("duplicate idle while prompt is pending does not dispatch concurrently", as
     await waitFor(() => fake.promptCount === 2)
     assert.equal(fake.promptCount, 2, "deferred idle is replayed only after the first dispatch settles")
     fake.pending[1].resolve({})
-    await tick()
+    await waitForDispatchCleanup(root)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

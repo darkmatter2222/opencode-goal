@@ -77,7 +77,7 @@ async function sdkPrompt(client: any, sessionID: string, text: string, execution
 async function sdkAbort(client: any, sessionID: string): Promise<boolean> {
   if (!client.session.abort) return false
   try {
-    await withDeadline(client.session.abort({ path: { id: sessionID } }), 5_000, "Goal abort")
+    sdkResult(await withDeadline(client.session.abort({ path: { id: sessionID } }), 5_000, "Goal abort"))
     return true
   } catch {
     return false
@@ -570,7 +570,11 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
                 next = recordEmptyAssistantTurn(goal, sample)
                 emptyNotice = { count: next.emptyTurnCount ?? 0, paused: next.status === "paused" }
               } else {
-                next = accountAssistantUsage(goal, sample)
+                // Tool rounds are billable messages inside one host prompt, not
+                // distinct Goal turns. Match OpenCode's terminal finish boundary.
+                next = accountAssistantUsage(goal, sample, Date.now(), {
+                  countTurn: !["tool-calls", "unknown"].includes(info.finish),
+                })
                 if (meaningful && currentRevision) next = clearEmptyAssistantTurnStreak(next)
               }
               next = observeModelContextUsage(next, info.tokens)

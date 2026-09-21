@@ -62,7 +62,7 @@ export default async function OpenCodeGoalPlugin(
   installGoalCompactionContinuation(input, hooks)
   // Ordered Goals stay below task/Plan wrappers. Parent task deferral and the
   // restricted-agent boundary therefore win before a sequence idle can advance.
-  installGoalSequence(input, hooks)
+  installGoalSequence(input, hooks, options.persistent !== false)
   // Task deferral sits below the restricted-agent wrapper so Plan safety always
   // wins before a delegated-task idle suppression decision is made.
   installTaskDeferral(input, hooks)

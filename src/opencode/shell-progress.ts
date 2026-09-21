@@ -53,15 +53,19 @@ function porcelainProjectLines(raw: string): string[] {
  */
 export async function shellGitWorkspaceMarker(directory: string): Promise<string | undefined> {
   try {
-    const [head, status, diff, untracked] = await Promise.all([
-      execFileAsync("git", ["-C", directory, "rev-parse", "--verify", "HEAD"], { windowsHide: true }),
+    const results = await Promise.allSettled([
+      execFileAsync("git", ["-C", directory, "rev-parse", "--verify", "HEAD"], { windowsHide: true, timeout: 5_000 }),
       execFileAsync("git", ["-C", directory, "status", "--porcelain=v1", "--untracked-files=all"], { windowsHide: true, timeout: 5_000 }),
       execFileAsync("git", ["-C", directory, "diff", "HEAD", "--binary", "--no-ext-diff", "--", ".", ":(exclude).opencode/goals", ":(exclude).opencode/goal-locks", ":(exclude).opencode/goal-sequences", ":(exclude).opencode/opencode-loop"], { windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024 * 1024 }),
       execFileAsync("git", ["-C", directory, "ls-files", "--others", "--exclude-standard", "-z"], { windowsHide: true, timeout: 5_000 }),
     ])
-    const payload = `${String(head.stdout).trim()}\n${porcelainProjectLines(String(status.stdout)).join("\n")}`
-    const hash = createHash("sha256").update(payload).update(String(diff.stdout))
-    for (const file of String(untracked.stdout).split("\0").filter(Boolean).sort()) {
+    // Drain every child even when one Git probe fails (e.g. outside Git).
+    // Returning early leaves processes holding the workspace open on Windows.
+    if (results.some(result => result.status === "rejected")) return undefined
+    const [head, status, diff, untracked] = results.map(result => (result as PromiseFulfilledResult<{ stdout: string | Buffer }>).value)
+    const payload = `${String(head!.stdout).trim()}\n${porcelainProjectLines(String(status!.stdout)).join("\n")}`
+    const hash = createHash("sha256").update(payload).update(String(diff!.stdout))
+    for (const file of String(untracked!.stdout).split("\0").filter(Boolean).sort()) {
       if (isGoalControlPlanePath(file)) continue
       const full = path.join(directory, file)
       const stat = await lstat(full)
