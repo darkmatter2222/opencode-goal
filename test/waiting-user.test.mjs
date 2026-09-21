@@ -31,7 +31,7 @@ test("waiting-user state sleeps autonomous continuation and resumes at the next 
   const sessionID = "waiting-user"
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
 
     const output = { parts: [{ type: "text", text: "raw" }] }

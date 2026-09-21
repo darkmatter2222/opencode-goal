@@ -1,3 +1,4 @@
+import { withDeadline, sdkResult } from "../runtime/deadline.js"
 import type CorePlugin from "./plugin.js"
 import type { GoalInfrastructureRecoveryKind, GoalState } from "../domain/types.js"
 import { scanRecoverableGoalStates } from "../persistence/diagnostics.js"
@@ -86,7 +87,7 @@ export function createGoalInfrastructureTransport(client: any) {
       }
       return async (...args: any[]) => {
         try {
-          return await value.apply(target, args)
+          return sdkResult(await value.apply(target, args))
         } catch (error) {
           const sessionID = sessionIDFromPromptArgs(args)
           if (sessionID && isTransientInfrastructureError(error)) {
@@ -140,7 +141,7 @@ export function installGoalInfrastructureRecovery(
     cancelTimer(sessionID)
     if (completionWins.has(sessionID)) return
     const timer = setTimeout(() => {
-      void wake(sessionID).catch(() => cancelTimer(sessionID))
+      void wake(sessionID).catch(() => armTimer(sessionID, retryPollMs))
     }, Math.max(0, delayMs))
     ;(timer as any).unref?.()
     timers.set(sessionID, timer)
@@ -153,7 +154,7 @@ export function installGoalInfrastructureRecovery(
     for (const args of [{ query: { directory: input.directory } }, {}]) {
       attempted = true
       try {
-        const raw = await status.call(input.client.session, args)
+        const raw: any = sdkResult(await withDeadline(status.call(input.client.session, args), 5_000, "Host status"))
         const data = raw && typeof raw === "object" && "data" in raw ? raw.data : raw
         if (!data || typeof data !== "object" || Array.isArray(data)) continue
         const entry = (data as Record<string, any>)[sessionID]
@@ -257,7 +258,7 @@ export function installGoalInfrastructureRecovery(
     for (let attempt = 0; attempt < MAX_PERSIST_RETRIES; attempt += 1) {
       if (completionWins.has(sessionID)) return undefined
       const latest = await store.load(sessionID)
-      if (!latest || !allowStatuses.includes(latest.status) || latest.status === "completed") return undefined
+      if (!latest || !allowStatuses.includes(latest.status) || latest.status === "completed" || (latest.status === "paused" && !legacyInfrastructureRecovery(latest))) return undefined
       const next = enterInfrastructureRecovery(latest, {
         kind,
         reason,

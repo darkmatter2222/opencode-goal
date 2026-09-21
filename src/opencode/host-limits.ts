@@ -1,3 +1,4 @@
+import { withDeadline, sdkResult } from "../runtime/deadline.js"
 import type CorePlugin from "./plugin.js"
 import type { GoalState } from "../domain/types.js"
 import { GoalStore, GoalStoreConcurrencyError } from "../persistence/store.js"
@@ -39,7 +40,7 @@ function sameAttempt(goal: GoalState | null, attempt: PromptOverflowAttempt | un
 async function abortSession(client: any, sessionID: string): Promise<void> {
   if (typeof client?.session?.abort !== "function") return
   try {
-    await client.session.abort({ path: { id: sessionID } })
+    await withDeadline(client.session.abort({ path: { id: sessionID } }), 5_000, "Host abort")
   } catch {
     // The provider error/retry may already have ended the run. State is still
     // authoritative and prevents the next idle from auto-continuing.
@@ -107,7 +108,8 @@ export function installHostLimitHandling(input: PluginInput, hooks: PluginHooks)
     recoveringOverflow.delete(sessionID)
     if (!result?.wrote) return false
     await abortSession(input.client, sessionID)
-    await showGoalToast(input.client, "Goal paused after the provider prompt stayed too large. Run /compact, then /goal resume.", "error")
+    if (result.goal.persistent) overflowAttempts.delete(sessionID)
+    await showGoalToast(input.client, result.goal.persistent ? "Goal remains in effect. Context recovery will retry automatically." : "Goal paused after the provider prompt stayed too large. Run /compact, then /goal resume.", "error")
     return true
   }
 
@@ -121,10 +123,10 @@ export function installHostLimitHandling(input: PluginInput, hooks: PluginHooks)
     }
 
     try {
-      await summarize.call(input.client.session, {
+      sdkResult(await withDeadline(summarize.call(input.client.session, {
         path: { id: sessionID },
         body: { providerID: model.providerID, modelID: model.modelID },
-      })
+      }), 120_000, "Host compaction"))
     } catch (error) {
       await pauseOverflow(sessionID, attempt, `${reason} Automatic compaction failed: ${String(error)}`)
       return
@@ -251,7 +253,8 @@ export function installHostLimitHandling(input: PluginInput, hooks: PluginHooks)
             if (paused?.wrote) {
               recoveringOverflow.delete(sessionID)
               await abortSession(input.client, sessionID)
-              await showGoalToast(input.client, "Goal paused after prompt overflow repeated. Run /compact, then /goal resume.", "error")
+              if (paused.goal.persistent) overflowAttempts.delete(sessionID)
+              await showGoalToast(input.client, paused.goal.persistent ? "Goal remains in effect. Repeated context overflow; recovery is scheduled." : "Goal paused after prompt overflow repeated. Run /compact, then /goal resume.", "error")
             }
           } else {
             recoveringOverflow.add(sessionID)

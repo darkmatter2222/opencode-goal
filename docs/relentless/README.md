@@ -1,6 +1,6 @@
 # OpenCode Relentless — reliability and developer experience design
 
-Planning only. No runtime, configuration, package identity, or installed plugin was changed.
+The feature branch now includes a development implementation. See [IMPLEMENTATION.md](IMPLEMENTATION.md) for shipped behavior and remaining design work. The documents below preserve the original audit and planning evidence.
 
 Reviewed fork: [darkmatter2222/opencode-goal](https://github.com/darkmatter2222/opencode-goal), commit `586e7ce3cf3a9105c7389310cc929ec1ed5e2bad` (package version 1.3.33, including unreleased changes).
 
@@ -14,7 +14,7 @@ Start with [DESIGN.md](DESIGN.md). It supersedes the baseline's persistence poli
 - [probe-fork.mjs](probe-fork.mjs): runnable reproductions, deliberately asserting existing behavior.
 - [fork-tests.log](fork-tests.log): unchanged fork's suite: 324 tests, 322 passed, two platform skips, zero failures on Linux.
 
-Run probes after installing dependencies and `npm run build`:
+Historical probes assert upstream behavior and must be run against the pinned upstream source, not the modified Relentless runtime:
 
 ```sh
 node docs/relentless/probe-fork.mjs

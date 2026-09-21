@@ -63,11 +63,13 @@ export function enterInfrastructureRecovery(
   const now = input.now ?? Date.now()
   const previous = goal.infrastructureRecovery
   const attempt = previous?.kind === input.kind ? previous.attempt + 1 : 1
-  const delay = infrastructureRetryDelayMs(attempt, input.baseMs, input.maxMs)
+  const interval = infrastructureRetryDelayMs(attempt, input.baseMs, input.maxMs)
+  const delay = goal.persistent ? Math.max(1, Math.floor(interval * (0.5 + Math.random() * 0.5))) : interval
   const reason = input.reason.replace(/\s+/g, " ").trim().slice(0, 1000)
   return {
     ...goal,
     status: "active",
+    ...(goal.persistent ? { nextWakeAt: now + delay } : {}),
     stopReason: `Recovering from ${input.kind} infrastructure failure; automatic retry scheduled. ${reason}`.trim(),
     infrastructureRecovery: {
       kind: input.kind,

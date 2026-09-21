@@ -63,7 +63,13 @@ export function continuationReminder(goal: GoalState): string {
 }
 
 export function continuationPrompt(goal: GoalState): string {
-  return revisionCompletedTurns(goal) === 0 ? fullContinuationPrompt(goal) : continuationReminder(goal)
+  let text = revisionCompletedTurns(goal) === 0 ? fullContinuationPrompt(goal) : continuationReminder(goal)
+  if (goal.persistent) {
+    text = text.replace("A blocker must be a real impasse. The same blocker must persist across three distinct goal turns before the plugin will stop as blocked.", "A blocker is an observation, not permission to stop. Persistent goals schedule further attempts even when apparently impossible.")
+    text += "\nPersistence policy: this goal remains in effect until verified or explicitly paused/stopped by the user. Never redefine the goal, treat impossibility as success, or weaken checks. Failed approaches should guide a different permitted strategy."
+    if (goal.infrastructureRecovery) text += `\nLast recovery: ${goal.infrastructureRecovery.reason}`
+  }
+  return text
 }
 
 export function compactionContext(goal: GoalState): string {

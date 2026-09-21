@@ -1,3 +1,5 @@
+import { readFile, readlink, lstat } from "node:fs/promises"
+import path from "node:path"
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import { promisify } from "node:util"
@@ -51,12 +53,22 @@ function porcelainProjectLines(raw: string): string[] {
  */
 export async function shellGitWorkspaceMarker(directory: string): Promise<string | undefined> {
   try {
-    const [head, status] = await Promise.all([
+    const [head, status, diff, untracked] = await Promise.all([
       execFileAsync("git", ["-C", directory, "rev-parse", "--verify", "HEAD"], { windowsHide: true }),
-      execFileAsync("git", ["-C", directory, "status", "--porcelain=v1", "--untracked-files=all"], { windowsHide: true }),
+      execFileAsync("git", ["-C", directory, "status", "--porcelain=v1", "--untracked-files=all"], { windowsHide: true, timeout: 5_000 }),
+      execFileAsync("git", ["-C", directory, "diff", "HEAD", "--binary", "--no-ext-diff", "--", ".", ":(exclude).opencode/goals", ":(exclude).opencode/goal-locks", ":(exclude).opencode/goal-sequences", ":(exclude).opencode/opencode-loop"], { windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024 * 1024 }),
+      execFileAsync("git", ["-C", directory, "ls-files", "--others", "--exclude-standard", "-z"], { windowsHide: true, timeout: 5_000 }),
     ])
     const payload = `${String(head.stdout).trim()}\n${porcelainProjectLines(String(status.stdout)).join("\n")}`
-    return createHash("sha256").update(payload).digest("hex")
+    const hash = createHash("sha256").update(payload).update(String(diff.stdout))
+    for (const file of String(untracked.stdout).split("\0").filter(Boolean).sort()) {
+      if (isGoalControlPlanePath(file)) continue
+      const full = path.join(directory, file)
+      const stat = await lstat(full)
+      if (stat.size > 16 * 1024 * 1024) return undefined
+      hash.update(file).update("\0").update(stat.isSymbolicLink() ? await readlink(full) : await readFile(full)).update("\0")
+    }
+    return hash.digest("hex")
   } catch {
     return undefined
   }

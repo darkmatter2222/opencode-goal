@@ -96,7 +96,7 @@ export function modelContextCompactionReason(
       positive(context.outputLimit) ?? 0,
       positive(context.compactionReserved) ?? 0,
     )
-    const minimumReserve = Math.max(8_192, Math.floor(contextLimit * 0.10))
+    const minimumReserve = Math.min(Math.floor(contextLimit * 0.25), Math.max(512, Math.floor(contextLimit * 0.10)))
     const reserve = Math.max(explicitReserve, minimumReserve)
     if (request + reserve >= contextLimit) {
       const percent = ((request / contextLimit) * 100).toFixed(1)

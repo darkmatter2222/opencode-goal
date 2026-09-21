@@ -13,19 +13,44 @@ function configuredCheckTimeoutMs(explicit?: number): number {
 
 function run(command: string, cwd: string, timeoutMs: number): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
-    const child = spawn(command, { cwd, shell: true, env: process.env })
+    const child = spawn(command, { cwd, shell: true, env: process.env, detached: process.platform !== "win32" })
     let output = ""
     const append = (chunk: Buffer | string) => { output = (output + String(chunk)).slice(-64_000) }
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
-    const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs)
+    let timedOut = false
+    let escalation: ReturnType<typeof setTimeout> | undefined
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    const killTree = (force: boolean) => {
+      if (!child.pid) return
+      if (process.platform === "win32") {
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore" })
+        killer.on("error", () => { child.kill(force ? "SIGKILL" : "SIGTERM") })
+      } else {
+        try { process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM") } catch { child.kill(force ? "SIGKILL" : "SIGTERM") }
+      }
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      append("\nVerification command timed out.")
+      killTree(false)
+      escalation = setTimeout(() => killTree(true), 1_000)
+      deadline = setTimeout(() => {
+        child.stdout?.destroy(); child.stderr?.destroy(); child.unref()
+        resolve({ code: 124, output })
+      }, 2_000)
+    }, timeoutMs)
     child.on("error", (error: Error) => {
       clearTimeout(timer)
+      if (escalation) clearTimeout(escalation)
+      if (deadline) clearTimeout(deadline)
       resolve({ code: 1, output: `${output}\n${error.message}` })
     })
     child.on("close", (code: number | null) => {
       clearTimeout(timer)
-      resolve({ code: typeof code === "number" ? code : 1, output })
+      if (escalation) clearTimeout(escalation)
+      if (deadline) clearTimeout(deadline)
+      resolve({ code: timedOut ? 124 : typeof code === "number" ? code : 1, output })
     })
   })
 }

@@ -1,3 +1,4 @@
+import { recoverPersistentGoal } from "./persistence-policy.js"
 import type { GoalState } from "../domain/types.js"
 import { settleReachedGoalBudget } from "./accounting.js"
 import { todoPlanIsCurrent } from "./todo-plan.js"
@@ -23,6 +24,10 @@ function defaultStallLimit(goal: GoalState): number {
 
 export function closeObservedTurn(goal: GoalState, input: { maxStalledTurns?: number; now?: number } = {}): GoalState {
   const now = input.now ?? Date.now()
+  if (goal.persistent && goal.usage.turns <= (goal.lastClosedTurn ?? 0)) {
+    const { skipNextStallCheck: _skip, ...rest } = goal
+    return settleReachedGoalBudget(rest, now)
+  }
   if (goal.pendingContinuation && goal.usage.turns === 0) {
     const { pendingContinuation: _pendingContinuation, skipNextStallCheck: _skipNextStallCheck, ...rest } = goal
     return settleReachedGoalBudget({ ...rest, observedProgressRevision: goal.progressRevision, updatedAt: now }, now)
@@ -43,12 +48,13 @@ export function closeObservedTurn(goal: GoalState, input: { maxStalledTurns?: nu
   const paused = stalledTurns >= limit && settled.status === "active"
   const closed: GoalState = {
     ...settled,
+    ...(goal.persistent ? { lastClosedTurn: goal.usage.turns } : {}),
     stalledTurns,
     observedProgressRevision: settled.progressRevision,
-    ...(paused ? { status: "paused" as const, stopReason: `Paused after ${stalledTurns} continuation turns without host-observed progress.` } : {}),
+    ...(paused && !goal.persistent ? { status: "paused" as const, stopReason: `Paused after ${stalledTurns} continuation turns without host-observed progress.` } : {}),
     updatedAt: now,
   }
-  return settleReachedGoalBudget(closed, now)
+  return settleReachedGoalBudget(paused && goal.persistent ? recoverPersistentGoal(closed, `No new observed progress in ${stalledTurns} turns. Reconcile unmet requirements and try a different approach.`, now) : closed, now)
 }
 
 export function markHostProgress(goal: GoalState, input: {

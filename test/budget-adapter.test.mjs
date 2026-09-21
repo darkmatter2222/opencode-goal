@@ -72,7 +72,7 @@ test("explicit OpenCode usage limit stops automatic goal retry while generic ret
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-usage-limit-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndOwn(hooks)
 
     await hooks.event({
@@ -126,7 +126,7 @@ test("fatal provider authentication error pauses the active goal but aborted err
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-provider-error-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndOwn(hooks)
 
     await hooks.event({
@@ -164,7 +164,7 @@ test("budget-limited goal cannot resume until its budget is raised", async () =>
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-budget-control-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndOwn(hooks, "ship release --max-turns 1")
     await completeOwnedAssistant(hooks)
 
@@ -211,7 +211,7 @@ test("budget command can clear limits and status shows used versus allowed value
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-budget-status-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndOwn(hooks, "ship release --max-turns 5 --max-tokens 100")
 
     const budget = { parts: [{ type: "text", text: "budget" }] }

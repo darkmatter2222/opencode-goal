@@ -51,7 +51,7 @@ test("auto-stalled Goal keeps steering text intact until model resume is activat
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-auto-stall-steering-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     const reason = "Paused after 3 continuation turns without host-observed progress."
 
@@ -88,7 +88,7 @@ test("explicit user pause is not silently resumed by an unrelated work instructi
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-explicit-pause-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
 
     await command(hooks, "finish the project")
     await command(hooks, "pause")

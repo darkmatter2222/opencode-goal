@@ -23,8 +23,10 @@ function replaceParts(parts: any[], text: string) {
 export function formatDetailedGoalStatus(goal: GoalState | null): string {
   if (!goal) return "No active goal."
   const req = goal.requirements.map((item, i) => `${i + 1}. [${item.status}] ${item.text}`).join("\n")
+  const retry = goal.infrastructureRecovery?.nextRetryAt
+  const continuity = goal.persistent ? `\nContinuation: until verified (host must be running)${retry ? `\nNext recovery: ${new Date(retry).toISOString()}` : goal.status === "active" ? "\nRecovery watchdog: checks idle goals every 5s" : ""}` : ""
   const stop = goal.stopReason ? `\nStop reason: ${goal.stopReason}` : ""
-  return `Goal: ${goal.objective}\nStatus: ${goal.status}\nRevision: ${goal.revision}\nBudget: ${formatGoalBudget(goal)}\nModel context: ${formatModelContext(goal)}${stop}\nRequirements:\n${req}`
+  return `Goal: ${goal.objective}\nStatus: ${goal.status}\nRevision: ${goal.revision}\nBudget: ${formatGoalBudget(goal)}\nModel context: ${formatModelContext(goal)}${continuity}${stop}\nRequirements:\n${req}`
 }
 
 function acceptanceRequirements(goal: GoalState): GoalRequirement[] {

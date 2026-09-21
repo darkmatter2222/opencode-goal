@@ -181,6 +181,11 @@ export interface GoalRuntimeFingerprint {
 
 export interface GoalState {
   schemaVersion: 1
+  /** New public-plugin goals persist until verified; absent on legacy snapshots. */
+  persistent?: boolean
+  nextWakeAt?: number
+  lastClosedTurn?: number
+  dispatchLease?: { owner: string; expiresAt: number }
   id: string
   sessionID: string
   objective: string

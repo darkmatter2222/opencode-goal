@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const installer = path.join(root, "dist", "install.js")
 const packageVersion = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version
-const packageSpec = `@bybrawe/opencode-goal@${packageVersion}`
+const packageSpec = `@darkmatter2222/opencode-relentless@${packageVersion}`
 
 async function runInstaller(configDir) {
   return await new Promise((resolve, reject) => {
@@ -47,7 +47,7 @@ test("installer normalizes Goal registration across every existing global config
   try {
     await mkdir(configDir, { recursive: true })
     await writeFile(path.join(configDir, "opencode.json"), `${JSON.stringify({
-      plugin: ["other-plugin", "@bybrawe/opencode-goal@1.0.0"],
+      plugin: ["other-plugin", "@darkmatter2222/opencode-relentless@1.0.0"],
       model: "test/model",
     }, null, 2)}\n`)
     await writeFile(path.join(configDir, "opencode.jsonc"), `{
@@ -69,7 +69,7 @@ test("installer normalizes Goal registration across every existing global config
     assert.match(jsonc, /"permission"/)
 
     const command = await readFile(path.join(configDir, "commands", "goal.md"), "utf8")
-    assert.match(command, /managed-by:@bybrawe\/opencode-goal/)
+    assert.match(command, /managed-by:@darkmatter2222\/opencode-relentless/)
 
     const beforeJson = await readFile(path.join(configDir, "opencode.json"), "utf8")
     const beforeJsonc = await readFile(path.join(configDir, "opencode.jsonc"), "utf8")

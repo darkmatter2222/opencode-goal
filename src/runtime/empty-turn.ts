@@ -1,3 +1,4 @@
+import { recoverPersistentGoal } from "./persistence-policy.js"
 import type { GoalState } from "../domain/types.js"
 import { accountAssistantUsage, type AssistantUsageSample } from "./accounting.js"
 
@@ -41,6 +42,7 @@ export function recordEmptyAssistantTurn(
   const accounted = accountAssistantUsage(goal, sample, now, { countTurn: false })
   const count = (goal.emptyTurnCount ?? 0) + 1
   const limit = Math.max(1, Math.floor(input.maxEmptyTurns ?? DEFAULT_MAX_EMPTY_TURNS))
+  if (goal.persistent) return recoverPersistentGoal({ ...accounted, emptyTurnCount: count, lastEmptyTurnAt: now }, `Empty assistant response ${count}; goal remains enabled. Reconcile the provider/session before retry.`, now)
   if (count >= limit) {
     const { skipNextStallCheck: _skipNextStallCheck, ...rest } = accounted
     return {

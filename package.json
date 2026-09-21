@@ -1,7 +1,7 @@
 {
-  "name": "@bybrawe/opencode-goal",
-  "version": "1.3.33",
-  "description": "OpenCode goal plugin for persistent autonomous multi-turn coding agents with host-verified completion, restart recovery, and /goal workflows.",
+  "name": "@darkmatter2222/opencode-relentless",
+  "version": "2.0.0-beta.1",
+  "description": "Persistent OpenCode goals with automatic recovery, discoverable commands, and evidence-backed completion.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,22 +20,25 @@
     }
   },
   "bin": {
-    "opencode-goal": "bin/opencode-goal.js"
+    "opencode-goal": "bin/opencode-goal.js",
+    "opencode-relentless": "./bin/opencode-goal.js",
+    "opencode-relentless-runner": "./bin/opencode-relentless-runner.js"
   },
   "files": [
     "dist",
     "bin",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/relentless/IMPLEMENTATION.md"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ByBrawe/opencode-goal.git"
+    "url": "git+https://github.com/darkmatter2222/opencode-goal.git"
   },
-  "homepage": "https://github.com/ByBrawe/opencode-goal#readme",
+  "homepage": "https://github.com/darkmatter2222/opencode-goal#readme",
   "bugs": {
-    "url": "https://github.com/ByBrawe/opencode-goal/issues"
+    "url": "https://github.com/darkmatter2222/opencode-goal/issues"
   },
   "publishConfig": {
     "access": "public"

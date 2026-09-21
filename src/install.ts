@@ -6,7 +6,7 @@ import { dirname, join } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-const packageName = "@bybrawe/opencode-goal"
+const packageName = "@darkmatter2222/opencode-relentless"
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const packageJSON = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as { version?: unknown }
 if (typeof packageJSON.version !== "string" || !packageJSON.version.trim()) throw new Error("package version is missing")
@@ -16,7 +16,7 @@ const configDir = process.env.OPENCODE_CONFIG_DIR || join(homedir(), ".config", 
 const configCandidates = ["opencode.json", "opencode.jsonc", "config.json", "config.jsonc"]
 const commandDir = join(configDir, "commands")
 const goalCommandPath = join(commandDir, "goal.md")
-const managedCommandMarker = "<!-- managed-by:@bybrawe/opencode-goal -->"
+const managedCommandMarker = "<!-- managed-by:@darkmatter2222/opencode-relentless -->"
 const legacyInstaller = join(dirname(fileURLToPath(import.meta.url)), "install-legacy.js")
 const installerArgs = process.argv.slice(2)
 
@@ -60,7 +60,7 @@ async function writeAtomic(target: string, content: string): Promise<void> {
 async function assertManagedCommandWritable(): Promise<void> {
   if (!(await fileExists(goalCommandPath))) return
   const existing = await readFile(goalCommandPath, "utf8")
-  if (existing.includes(managedCommandMarker)) return
+  if ((existing.includes(managedCommandMarker) || existing.includes("<!-- managed-by:@bybrawe/opencode-goal -->"))) return
   throw new Error(`Refusing to overwrite user-owned OpenCode command: ${goalCommandPath}`)
 }
 
@@ -99,10 +99,24 @@ async function installAcrossExistingConfigs(existing: string[]): Promise<void> {
   const plans = [] as Array<{ target: string; content: string; commandContent: string }>
   for (const name of existing) plans.push(await stageConfig(name))
 
-  for (const plan of plans) await writeAtomic(plan.target, plan.content)
-
-  await mkdir(commandDir, { recursive: true })
-  await writeAtomic(goalCommandPath, plans[0]!.commandContent)
+  const originals = new Map<string, string | null>()
+  for (const plan of plans) originals.set(plan.target, await readFile(plan.target, "utf8"))
+  originals.set(goalCommandPath, await fileExists(goalCommandPath) ? await readFile(goalCommandPath, "utf8") : null)
+  // Durable backups survive process interruption; ordinary write failures also roll back.
+  for (const [target, content] of originals) if (content !== null) await writeAtomic(`${target}.relentless-backup`, content)
+  try {
+    for (const plan of plans) await writeAtomic(plan.target, plan.content)
+    await mkdir(commandDir, { recursive: true })
+    await writeAtomic(goalCommandPath, plans[0]!.commandContent)
+  } catch (error) {
+    const failures: string[] = []
+    for (const [target, content] of originals) {
+      try { if (content === null) await rm(target, { force: true }); else await writeAtomic(target, content) }
+      catch { failures.push(target) }
+    }
+    if (failures.length) throw new Error(`Install failed; restore .relentless-backup files for: ${failures.join(", ")}. Original error: ${String(error)}`)
+    throw error
+  }
 
   const pluginDir = join(configDir, "plugins")
   for (const localName of ["opencode-goal.ts", "opencode-goal.js"]) {

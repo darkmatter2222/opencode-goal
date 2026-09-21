@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const packageName = "@bybrawe/opencode-goal"
+const packageName = "@darkmatter2222/opencode-relentless"
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const packageJSON = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as { version?: unknown }
 if (typeof packageJSON.version !== "string" || !packageJSON.version.trim()) throw new Error("package version is missing")
@@ -13,14 +13,14 @@ const packageSpec = `${packageName}@${packageVersion}`
 const configDir = process.env.OPENCODE_CONFIG_DIR || join(homedir(), ".config", "opencode")
 const commandDir = join(configDir, "commands")
 const goalCommandPath = join(commandDir, "goal.md")
-const managedCommandMarker = "<!-- managed-by:@bybrawe/opencode-goal -->"
-const goalCommandContent = `---\ndescription: Set or manage a persistent evidence-verified goal\n---\n\n${managedCommandMarker}\nOpenCode Goals command bridge. The OpenCode Goals plugin should intercept this command before model execution.\nIf this text reaches the model, do not perform the requested work. Tell the user the OpenCode Goals plugin did not load, then ask them to reinstall/update with npx -y @bybrawe/opencode-goal@latest and fully restart OpenCode.\n\nRequested /goal arguments:\n$ARGUMENTS\n`
+const managedCommandMarker = "<!-- managed-by:@darkmatter2222/opencode-relentless -->"
+const goalCommandContent = `---\ndescription: Set or manage a persistent evidence-verified goal\n---\n\n${managedCommandMarker}\nOpenCode Goals command bridge. The OpenCode Goals plugin should intercept this command before model execution.\nIf this text reaches the model, do not perform the requested work. Tell the user the OpenCode Goals plugin did not load, then ask them to reinstall/update with npx -y @darkmatter2222/opencode-relentless@latest and fully restart OpenCode.\n\nRequested /goal arguments:\n$ARGUMENTS\n`
 const configCandidates = ["opencode.json", "opencode.jsonc", "config.json", "config.jsonc"]
 const installerArgs = process.argv.slice(2)
 const uninstallRequested = installerArgs.length === 1 && ["--uninstall", "uninstall", "--remove"].includes(installerArgs[0] ?? "")
 
 if (installerArgs.includes("--help") || installerArgs.includes("-h")) {
-  console.log(`OpenCode Goals installer/updater\n\nUsage:\n  opencode-goal\n  npx -y @bybrawe/opencode-goal@latest\n  npx -y @bybrawe/opencode-goal@latest --uninstall\n\nInstall/update adds ${packageName} to the global OpenCode config, pins the exact package version,\nand installs a managed global commands/goal.md so /goal is discoverable in current OpenCode CLI/TUI.\nUninstall removes OpenCode Goals package/local plugin registrations and the managed /goal command\nbut preserves project Goal state and any user-owned goal.md file.\n\nSet OPENCODE_CONFIG_DIR to target a non-default OpenCode config directory.`)
+  console.log(`OpenCode Goals installer/updater\n\nUsage:\n  opencode-goal\n  npx -y @darkmatter2222/opencode-relentless@latest\n  npx -y @darkmatter2222/opencode-relentless@latest --uninstall\n\nInstall/update adds ${packageName} to the global OpenCode config, pins the exact package version,\nand installs a managed global commands/goal.md so /goal is discoverable in current OpenCode CLI/TUI.\nUninstall removes OpenCode Goals package/local plugin registrations and the managed /goal command\nbut preserves project Goal state and any user-owned goal.md file.\n\nSet OPENCODE_CONFIG_DIR to target a non-default OpenCode config directory.`)
   process.exit(0)
 }
 
@@ -316,7 +316,7 @@ function findRootClose(source: string, start: number): number {
 function isPackageSpec(value: unknown): boolean {
   if (typeof value !== "string") return false
   const spec = value.trim()
-  return spec === packageName || spec.startsWith(`${packageName}@`)
+  return [packageName, "@bybrawe/opencode-goal"].some(name => spec === name || spec.startsWith(`${name}@`))
 }
 
 function isKnownLocalGoalSpec(value: unknown): boolean {
@@ -395,7 +395,7 @@ async function writeAtomic(target: string, content: string): Promise<void> {
 async function assertGoalCommandAvailable(): Promise<void> {
   if (!(await fileExists(goalCommandPath))) return
   const existing = await readFile(goalCommandPath, "utf8")
-  if (existing.includes(managedCommandMarker)) return
+  if ((existing.includes(managedCommandMarker) || existing.includes("<!-- managed-by:@bybrawe/opencode-goal -->"))) return
   throw new Error(`Refusing to overwrite user-owned OpenCode command: ${goalCommandPath}`)
 }
 
@@ -407,7 +407,7 @@ async function installManagedGoalCommand(): Promise<void> {
 async function removeManagedGoalCommand(): Promise<boolean> {
   if (!(await fileExists(goalCommandPath))) return false
   const existing = await readFile(goalCommandPath, "utf8")
-  if (!existing.includes(managedCommandMarker)) {
+  if (!(existing.includes(managedCommandMarker) || existing.includes("<!-- managed-by:@bybrawe/opencode-goal -->"))) {
     console.warn(`Preserved user-owned OpenCode command: ${goalCommandPath}`)
     return false
   }

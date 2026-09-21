@@ -70,7 +70,7 @@ test("shell process outcome counts only real process exits", () => {
 test("distinct Goal-owned shell actions count as host progress while identical repeats deduplicate", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-shell-progress-"))
   try {
-    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root }, { persistent: false })
     await createGoal(hooks)
 
     const before = await readOnlyGoal(root)
@@ -97,7 +97,7 @@ test("distinct Goal-owned shell actions count as host progress while identical r
 test("three shell-only continuation turns do not false-pause, while repeated no-op shell activity still stalls", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-shell-stall-"))
   try {
-    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root }, { persistent: false })
     await createGoal(hooks)
 
     // Settle the synthetic creation boundary first. Real continuation turns begin
@@ -144,7 +144,7 @@ test("three shell-only continuation turns do not false-pause, while repeated no-
 test("three distinct timed-out shell turns cannot evade the stall guard", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-shell-timeout-"))
   try {
-    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root }, { persistent: false })
     await createGoal(hooks)
 
     const baseline = (await readOnlyGoal(root)).progressRevision
@@ -174,7 +174,7 @@ test("three distinct timed-out shell turns cannot evade the stall guard", async 
 test("shell completion from an older Goal revision cannot mark the edited Goal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-shell-stale-"))
   try {
-    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root }, { persistent: false })
     await createGoal(hooks)
 
     await hooks["tool.execute.before"](
@@ -235,7 +235,7 @@ test("Git shell marker ignores Goal/Loop control-plane churn but observes durabl
 test("distinct read-only shell probes cannot keep a stalled Goal alive", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-shell-readonly-"))
   try {
-    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fakeClient(), directory: root }, { persistent: false })
     await createGoal(hooks)
 
     const baseline = (await readOnlyGoal(root)).progressRevision

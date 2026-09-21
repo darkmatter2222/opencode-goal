@@ -111,6 +111,9 @@ export async function captureStartupGoals(directory: string): Promise<GoalState[
 }
 
 export function scheduleStartupRecovery(input: PluginInput, hooks: PluginHooks, startupGoals: GoalState[]): void {
+  // Persistent goals use the periodic supervisor and core dispatch lease; do not
+  // create a second startup dispatcher or a blocking bootstrap barrier.
+  startupGoals = startupGoals.filter(goal => !goal.persistent)
   if (!startupGoals.length || typeof hooks.event !== "function") return
 
   const originalEvent = hooks.event

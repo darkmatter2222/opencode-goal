@@ -71,7 +71,7 @@ function parseContainsContract(value: string): FileRequirementInput {
 
 function parseLimit(option: string, raw: string | undefined, integer = false): number {
   if (raw === undefined) throw new Error(`${option} expects a non-negative number`)
-  const value = integer ? Number(raw) : Number.parseFloat(raw)
+  const value = integer ? Number(raw) : Number(raw)
   if (!Number.isFinite(value) || value < 0 || (integer && !Number.isInteger(value))) {
     throw new Error(`${option} expects a non-negative ${integer ? "integer" : "number"}`)
   }

@@ -1,3 +1,5 @@
+import { installGoalCommandUX } from "./opencode/command-ux.js"
+import { installPersistentSupervisor } from "./opencode/supervisor.js"
 import OpenCodeGoalCorePlugin from "./opencode/plugin.js"
 import { installGoalControlPlaneProgressGuard } from "./opencode/control-plane-progress.js"
 import { installForeignCommandSteeringGuard } from "./opencode/foreign-command-guard.js"
@@ -36,7 +38,7 @@ export default async function OpenCodeGoalPlugin(
     ...input,
     client: preferSynchronousSessionPrompt(infrastructureTransport.client),
   }
-  const hooks = await OpenCodeGoalCorePlugin(coreInput, applySemanticVerifierTimeoutDefault(options))
+  const hooks = await OpenCodeGoalCorePlugin(coreInput, applySemanticVerifierTimeoutDefault({ persistent: true, ...options }))
   // GoalStore writes live inside the project tree and OpenCode may expose them
   // as PatchParts. Filter those control-plane paths directly above core before
   // they can be mistaken for user-project progress and reset the stall guard.
@@ -86,6 +88,8 @@ export default async function OpenCodeGoalPlugin(
   // Localization is installed last and never rewrites foreground user intent.
   installGoalLifecycleUX(input, hooks)
   installGoalI18nUX(input, hooks)
+  installPersistentSupervisor(input, hooks)
+  installGoalCommandUX(input, hooks)
   return hooks
 }
 
