@@ -10,7 +10,8 @@ const marker = /<!-- command-catalog:start -->[\s\S]*?<!-- command-catalog:end -
 const cell = text => text.replaceAll('|', '\\|')
 const rows = GOAL_COMMANDS.map(([name, description, args]) => `| \`/goal ${name}${args ? ` ${args}` : ''}\` | \`/goal-${name}\` | ${cell(description)} |`)
 const table = `<!-- command-catalog:start -->\n| Command | Shortcut | Purpose |\n|---|---|---|\n${rows.join('\n')}\n<!-- command-catalog:end -->`
-let commands = await readFile(commandPath, 'utf8')
+// Git may check out Markdown as CRLF on Windows; content must compare identically.
+let commands = (await readFile(commandPath, 'utf8')).replaceAll('\r\n', '\n')
 assert.ok(marker.test(commands), 'command reference must contain catalog markers')
 if (process.argv.includes('--write')) {
   commands = commands.replace(marker, table)
