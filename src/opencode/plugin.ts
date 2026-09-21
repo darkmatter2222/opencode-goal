@@ -238,11 +238,11 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
       }
       let goal = await load(sessionID)
       if (!goal || goal.status !== "active") return null
-      if (goal.persistent && ((goal.infrastructureRecovery?.nextRetryAt ?? 0) > Date.now())) return null
+      if (goal.persistent && (Math.max(goal.infrastructureRecovery?.nextRetryAt ?? 0, goal.providerRetryAt ?? 0) > Date.now())) return null
       if (goal.dispatchLease && goal.dispatchLease.owner !== instanceID && goal.dispatchLease.expiresAt > Date.now() && leaseOwnerAlive(goal.dispatchLease.owner)) return null
       goal = closeObservedTurn(goal)
       await save(goal)
-      if (goal.status !== "active" || (goal.infrastructureRecovery?.nextRetryAt ?? 0) > Date.now()) return null
+      if (goal.status !== "active" || Math.max(goal.infrastructureRecovery?.nextRetryAt ?? 0, goal.providerRetryAt ?? 0) > Date.now()) return null
       if (goal.persistent) {
         goal = { ...goal, nextWakeAt: Date.now() + 15_000, dispatchLease: { owner: instanceID, expiresAt: Date.now() + dispatchTimeout } }
         await save(goal)
@@ -320,9 +320,17 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           return
         }
         if (parsed.action === "resume") {
+          if (!goal || (goal.status === "active" && event.__goalActivation !== true) || goal.status === "completed") {
+            output.noReply = true
+            markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nResume did not start another request.`)
+            return
+          }
           resetCadenceTurn(event.sessionID)
           if (goal) goal = await save(resumeGoal(goal))
-          markCommandOutputOwned(event.sessionID, output, goal ? continuationPrompt(goal) : "No goal exists. Respond only with that fact.", goal ?? undefined)
+          if (goal && Math.max(goal.providerRetryAt ?? 0, goal.infrastructureRecovery?.nextRetryAt ?? 0) > Date.now()) {
+            output.noReply = true
+            markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nGoal enabled. The saved retry deadline is preserved; recovery will continue automatically.`)
+          } else markCommandOutputOwned(event.sessionID, output, goal ? continuationPrompt(goal) : "No goal exists. Respond only with that fact.", goal ?? undefined)
           return
         }
         if (parsed.action === "clear") {
@@ -368,7 +376,10 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           })
         }
         await save(goal)
-        markCommandOutputOwned(event.sessionID, output, continuationPrompt(goal), goal)
+        if ((goal.providerRetryAt ?? 0) > Date.now()) {
+          output.noReply = true
+          markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nGoal updated. Provider cooldown remains in effect; recovery will continue automatically.`)
+        } else markCommandOutputOwned(event.sessionID, output, continuationPrompt(goal), goal)
       })
       if (abortControl === "edit") await abortGoalTurn(event.sessionID, true)
       else if (abortControl === "pause") await abortGoalTurn(event.sessionID, false)

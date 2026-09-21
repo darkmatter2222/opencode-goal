@@ -234,7 +234,7 @@ async function recoverStartupGoals(
       // accounting, so restore the unchanged persisted snapshot before any host
       // prompt is sent. No interrupted turn is closed or counted here.
       const output: any = { parts: [{ type: "text", text: "" }] }
-      await commandHook({ command: "goal", sessionID, arguments: "resume" }, output)
+      await commandHook({ command: "goal", sessionID, arguments: "resume", __goalActivation: true }, output)
       const prepared = await store.load(sessionID)
       if (!prepared || prepared.id !== current.id || prepared.revision !== current.revision || prepared.status !== "active") {
         runtime.pending.delete(sessionID)

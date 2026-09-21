@@ -183,6 +183,8 @@ export interface GoalState {
   schemaVersion: 1
   /** New public-plugin goals persist until verified; absent on legacy snapshots. */
   persistent?: boolean
+  /** Provider Retry-After lower bound, preserved across local recovery/control transitions. */
+  providerRetryAt?: number
   nextWakeAt?: number
   lastClosedTurn?: number
   dispatchLease?: { owner: string; expiresAt: number }

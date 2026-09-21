@@ -7,17 +7,17 @@ type Hooks = Awaited<ReturnType<typeof CorePlugin>>
 const instances = new Map<string, () => void>()
 
 /** Host events are an optimization. Persisted obligations are reconciled independently. */
-export async function reconcilePersistentGoals(input: Input, hooks: Hooks, now = Date.now()): Promise<void> {
+export async function reconcilePersistentGoals(input: Input, hooks: Hooks, now = Date.now(), sessionID?: string): Promise<void> {
   if (typeof input.client?.session?.status !== "function") return
   const raw: any = sdkResult(await withDeadline(input.client.session.status({ query: { directory: input.directory } }), 5_000, "Host status"))
   const statuses = raw?.data ?? raw
   if (!statuses || typeof statuses !== "object" || Array.isArray(statuses)) return
   const goals = await scanRecoverableGoalStates(input.directory)
   // Each goal settles independently; one callback cannot indefinitely block the scanner.
-  await Promise.allSettled(goals.filter(goal => goal.persistent && goal.status === "active").map(async goal => {
+  await Promise.allSettled(goals.filter(goal => goal.persistent && goal.status === "active" && (!sessionID || goal.sessionID === sessionID)).map(async goal => {
     const status = statuses[goal.sessionID]?.type ?? "idle"
     if (status !== "idle") return
-    if (Math.max(goal.nextWakeAt ?? 0, goal.infrastructureRecovery?.nextRetryAt ?? 0) > now) return
+    if (Math.max(goal.nextWakeAt ?? 0, goal.infrastructureRecovery?.nextRetryAt ?? 0, goal.providerRetryAt ?? 0) > now) return
     await withDeadline(Promise.resolve(hooks.event?.({ event: { type: "session.idle", properties: {
       sessionID: goal.sessionID, __relentlessReconcile: true, __relentlessStatuses: statuses,
     } } })), 10_000, "Goal reconciliation")

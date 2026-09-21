@@ -90,7 +90,7 @@ export function installGoalSequence(input: PluginInput, hooks: PluginHooks, pers
     if (parsed.action === "next") {
       const promoted = await sequences.promoteNext(event.sessionID)
       if (promoted.ok) {
-        await commandHook({ ...event, arguments: "resume" }, output)
+        await commandHook({ ...event, arguments: "resume", __goalActivation: true }, output)
         return
       }
 

@@ -4,7 +4,9 @@ All notable changes to **OpenCode Goals** are documented here.
 
 ## 2.0.0-beta.1 — 2026-09-21
 
-First Relentless implementation. Not yet published to npm.
+First Relentless implementation. Source-install development beta.
+
+Review hardening: preserve provider cooldowns across controls and edits; scope retry to one session; prevent duplicate active-resume dispatch; invalidate stale queued model-resume intent; drain recovery timers on disposal; fix asynchronous test readers/cleanup; add generated command reference, documentation checks and complete developer/operations guides.
 
 - Enable persistent pursuit for newly created public-plugin goals; keep legacy bounded mode explicitly selectable.
 - Replace stall, empty-response, repeated-blocker and model-requested waiting surrender with durable retry intent.

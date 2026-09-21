@@ -2,88 +2,114 @@
 
 **Keep working. Prove the finish.**
 
-Relentless keeps an OpenCode goal in effect through failed attempts, empty responses and provider outages, with automatic recovery and discoverable commands. Forked from [ByBrawe/opencode-goal](https://github.com/ByBrawe/opencode-goal), with the upstream MIT license and history preserved.
+[![CI](https://github.com/darkmatter2222/opencode-goal/actions/workflows/ci.yml/badge.svg?branch=feat%2Frelentless)](https://github.com/darkmatter2222/opencode-goal/actions/workflows/ci.yml)
+[![Release readiness](https://github.com/darkmatter2222/opencode-goal/actions/workflows/release-readiness.yml/badge.svg?branch=feat%2Frelentless)](https://github.com/darkmatter2222/opencode-goal/actions/workflows/release-readiness.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Development beta: 2.0.0-beta.1. Not published to npm.** The implementation lives on `feat/relentless`. See [implementation status and limits](docs/relentless/IMPLEMENTATION.md) before using it for unattended work.
+Give OpenCode an objective. Relentless preserves it across turns, records progress, retries interruptions, and checks the evidence before accepting completion.
 
-## Try this branch locally
+**Development beta · `2.0.0-beta.1` · source installation.** New goals stay enabled through stalls, empty responses, repeated blockers and provider failures. User controls, explicit budgets and host permissions remain authoritative. This is persistent pursuit with bounded retry intervals—not a promise of infinite uptime or infallible semantic verification.
+
+[Install](docs/guides/INSTALLATION.md) · [Commands](docs/guides/COMMANDS.md) · [Troubleshooting](docs/guides/TROUBLESHOOTING.md) · [Recovery contract](docs/guides/RELIABILITY.md) · [Contribute](CONTRIBUTING.md) · [Türkçe](README.tr.md)
+
+## A first session
+
+```text
+/goal Fix checkout retries without duplicate charges --check "npm test"
+/goal status
+/goal proof
+/goal pause
+/goal resume
+```
+
+Need help while coding? Type `/goal` for an explanation, `/goal help edit` for a specific example, or `/goal-` to discover separate slash-command shortcuts. On compatible TUI hosts, `/goal-menu` opens a searchable picker and inserts the selected command for you to review.
+
+```text
+/goal-new -- pause
+```
+
+That creates the literal objective “pause.” The `--` delimiter makes everything after it objective text; put verification flags in a normal `/goal new …` command instead.
+
+## What improves the workflow
+
+| Capability | What you get |
+|---|---|
+| Persistent pursuit | No-progress streaks and model-reported blockers schedule another attempt instead of surrendering. |
+| Recovery | Saved retry deadlines, jittered backoff, provider cooldown preservation and a periodic idle-session scan. |
+| Goal contracts | An objective plus acceptance criteria, constraints, file requirements and executable checks. |
+| Evidence-backed completion | Fresh host checks, file evidence and separate semantic review; missing proof keeps the goal open. |
+| Understandable controls | Contextual help, command aliases, recovery explanations, proof inspection and recent observations. |
+| Queues and history | Prepare future goals, preserve their persistence policy, and restore unfinished archives as paused. |
+| Host supervision | An authenticated loopback runner can restart its OpenCode server after crashes. |
+
+## Install from this branch
+
+Requires Node.js 20+ and OpenCode. The declared compatibility floor is OpenCode/plugin API 1.4.0; native menu availability depends on the host's TUI API.
 
 ```sh
 git clone --branch feat/relentless https://github.com/darkmatter2222/opencode-goal.git
 cd opencode-goal
 npm ci
 npm run build
+node -e "console.log(require('node:url').pathToFileURL(process.cwd()).href)"
 ```
 
-In your OpenCode configuration, replace the upstream plugin entry with the absolute local package directory (a `file:///.../opencode-goal` package URL). Do not load both implementations. Keep a backup of your configuration. Restart OpenCode completely. The package root exports the server plugin; rich TUI entrypoint discovery depends on your OpenCode version.
+Use the printed absolute package URL in your OpenCode configuration, replacing the old Goal plugin entry:
 
-For a source checkout, use the local package URL. **Do not run the installer yet against the npm registry:** it pins `@darkmatter2222/opencode-relentless@2.0.0-beta.1`, which is not published. The installer migration is implemented and tested for a future package release.
-
-## Start with a goal
-
-```text
-/goal Fix checkout retries without duplicate charges --check "npm test"
+```json
+{
+  "plugin": ["file:///absolute/path/to/opencode-goal"]
+}
 ```
 
-New goals use persistent mode by default. They stay enabled through no-progress streaks, repeated blockers, empty model responses and infrastructure errors. Failed verification keeps the goal open. Explicit user pause/stop, finite budgets and OpenCode permissions still apply.
+Restart OpenCode completely, then run `/goal help` and `/goal doctor`. Preserve other settings and plugins in your configuration. Do not load upstream Goal and Relentless together. See the [installation guide](docs/guides/INSTALLATION.md) for Windows paths, updates, migration and rollback.
 
-Existing stored goals retain their previous policy; migration does not silently resume paused or blocked work. The lower-level core/domain API retains its legacy defaults; the public plugin enables persistence. Plugin option `persistent: false` opts into the upstream bounded policy for new goals.
+The source installer targets the new npm package identity, `@darkmatter2222/opencode-relentless`. Use the local package URL for this beta; do not assume that version has been published to npm.
 
-## Learn everything inside OpenCode
+## Know what is happening
 
-| Command | Purpose |
-|---|---|
-| `/goal` or `/goal help` | Commands, descriptions and usage |
-| `/goal help edit` | Syntax and an example for one action |
-| `/goal-menu` | Native searchable picker, when supported; selects a command for your prompt |
-| `/goal-new -- <objective>` | Explicit literal objective, including command-like words |
-| `/goal-status` | State, requirements, and recovery deadline |
-| `/goal-edit <objective>` | Revise the objective while preserving unspecified checks and constraints |
-| `/goal-pause` / `/goal-resume` | Explicit run controls |
-| `/goal-stop` | Archive and stop pursuit; retain your project files |
-| `/goal-retry` | Reconcile recovery without duplicating active work or shortening provider backoff |
-| `/goal-why` | Current reason and next automatic action |
-| `/goal-proof` | Requirement/evidence audit |
-| `/goal-attempts` | Recent host observations and checkpoints |
-| `/goal-doctor` | Storage integrity diagnosis |
+| If you see… | It means… | Next action |
+|---|---|---|
+| `active` with a retry deadline | The goal is enabled and waiting for recovery. | `/goal why`; leave the host running. |
+| `paused` | Autonomous pursuit is off. | `/goal resume` when you want it enabled again. |
+| `budget_limited` | An explicit resource limit was reached. | Inspect `/goal budget`, then intentionally adjust it. |
+| Unproven requirements | Completion has not been established. | `/goal proof`; gather or strengthen evidence. |
+| An integrity error | The plugin cannot safely interpret saved state. | `/goal doctor`; back up state before repair. |
 
-Type `/goal-` for native shortcut suggestions. Existing forms such as `/goal pause`, `/goal contract`, `/goal queue`, `/goal history` and `/goal budget` remain available. Status/help/control responses request no model reply. Host support for the command hook's `noReply` behavior is required.
+`/goal retry` reconciles **this session** when its saved wake is due. It does not skip provider cooldowns, interrupt busy work or resume a paused goal. Repeating `/goal resume` on an active goal does not launch a duplicate request.
 
-## Recovery
+## Keep a host available
 
-Transport failures use exponential retry intervals starting at 15 seconds and capped at five minutes, with equal jitter and no lifetime retry count. Provider `Retry-After` received with SDK dispatch failures is honored. A periodic scanner rechecks persisted active goals every five seconds and reconciles host status before requesting work. SDK waits have deadlines, and dispatch leases guard concurrent plugin instances.
-
-A model dependency report schedules another check instead of putting a persistent goal to sleep. The plugin never changes permissions or credentials to get around a blocker.
-
-## Keep the host running
+Set `OPENCODE_SERVER_PASSWORD` securely in the environment, then:
 
 ```sh
-# Set OPENCODE_SERVER_PASSWORD securely in your environment first.
-node bin/opencode-relentless-runner.js --directory /absolute/project/path --port 4097
+node bin/opencode-relentless-runner.js --directory /absolute/project --port 4097
 ```
 
-The runner starts an authenticated loopback `opencode serve` process and restarts it after crashes. Connect your OpenCode TUI to that server using its attach command and the same server credentials. Install/configure this plugin in the target project before starting the runner.
+Attach your TUI to that server using matching credentials. The plugin must already be configured for the project. To survive logout/reboot, run the runner under your OS service manager. It does not install a service automatically. See [operations](docs/guides/OPERATIONS.md).
 
-Run the command under systemd, launchd or Windows Task Scheduler for restart after logout/reboot. It does not install an OS service automatically. Set `OPENCODE_EXECUTABLE` to the native OpenCode executable if it is not on PATH; on Windows use the native `.exe`, not a shell `.cmd` wrapper. Ctrl+C stops the runner/host; persisted goals remain saved for the next start.
+## Honest boundaries
 
-## Verification
+- A goal remains saved when the host stops; it cannot execute while the host or machine is unavailable.
+- Supported exact integer equations use deterministic arithmetic. `1 + 1 = 3` stays unverified, regardless of what a model claims.
+- General natural-language goals still depend on fallible semantic review. Passing tests alone does not prove every broad objective.
+- Local JSON state, Git comparisons and leases are not a security sandbox, an immutable oracle, or exactly-once protection for external actions.
+- Existing saved goals keep their previous policy; migration does not silently resume old work. Explicit finite budgets still stop autonomous pursuit.
 
-Host checks and file evidence remain separate from semantic review. Required evidence is retained, Git content changes during an audit reject completion, and exact integer equations such as `1 + 1 = 3` receive a deterministic arithmetic verdict. A false supported equation cannot pass because a model says it is true.
+Read the [recovery and verification contract](docs/guides/RELIABILITY.md) and [implementation status](docs/relentless/IMPLEMENTATION.md) before unattended use.
 
-These checks are **not a universal proof oracle or a security sandbox**. Broad semantic objectives still depend on the configured verifier. An executor with unrestricted shell access can alter local state or test definitions. Strong OS isolation, immutable external contracts and authoritative external verification adapters remain separate work described in the implementation status.
-
-## Development
+## Develop and validate
 
 ```sh
-npm run check
-npm test
-npm run eval
-npm run package:smoke
+npm ci
+npm run release:check
 ```
 
-Tests cover persistent failure sequences, impossible arithmetic, dropped wakes, provider error envelopes, explicit pause/stop, aliases and help, plus upstream compatibility behavior. The release workflow is manual and publishes only to the `beta` tag after validation; no package was published by this development change.
+The checks include TypeScript, unit/integration tests, an adversarial evaluation corpus, documentation consistency and installation of the packed package in a clean consumer. GitHub Actions additionally exercises Windows, Linux, Node versions, plugin compatibility and real-host canaries. Follow the live badges for the current commit; historical counts are not a release guarantee.
 
-- [Implementation status](docs/relentless/IMPLEMENTATION.md)
-- [Architecture and ten feature designs](docs/relentless/DESIGN.md)
-- [Command and continuity specification](docs/relentless/COMMANDS-AND-CONTINUITY.md)
-- [Original source audit](docs/relentless/baseline-1.3.31/AUDIT.md)
+- [Documentation index](docs/README.md)
+- [Architecture and source map](docs/guides/ARCHITECTURE.md)
+- [Ten next-stage feature designs](docs/guides/ROADMAP.md)
+- [Changelog](CHANGELOG.md) · [Security boundaries](SECURITY.md)
+
+Built on [ByBrawe/opencode-goal](https://github.com/ByBrawe/opencode-goal). Upstream attribution, MIT license and repository history are preserved. Independent community plugin; no affiliation with OpenCode is implied.

@@ -1,4 +1,8 @@
-# OpenCode Relentless — reliability and developer experience design
+# Historical audit and design archive
+
+For current behavior, installation and commands, start at the [documentation home](../README.md). This directory preserves baseline evidence and proposals. Implementation is tracked separately in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+
+## Original planning index
 
 The feature branch now includes a development implementation. See [IMPLEMENTATION.md](IMPLEMENTATION.md) for shipped behavior and remaining design work. The documents below preserve the original audit and planning evidence.
 

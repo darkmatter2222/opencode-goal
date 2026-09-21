@@ -28,4 +28,12 @@ The original head is not merge-ready. CI, Release Readiness, and Real Host Progr
 
 ## Remaining limitations
 
-The broader gaps in IMPLEMENTATION.md remain: semantic verification is fallible, persisted dispatch leases are not external-action exactly-once receipts, and host/process recovery cannot operate through permanent machine or storage loss. This review does not certify all failure modes or production readiness. In particular, manual resume currently clears stored recovery deadlines; strict provider cooldown preservation across every control transition needs a follow-up regression and policy change.
+The broader gaps in IMPLEMENTATION.md remain: semantic verification is fallible, persisted dispatch leases are not external-action exactly-once receipts, and host/process recovery cannot operate through permanent machine or storage loss. This review does not certify all failure modes or production readiness. At the reviewed original head, manual resume cleared stored recovery deadlines. This specific finding is resolved by the second review follow-up below.
+
+## Second review follow-up
+
+The first follow-up (`e8b158a`) passed GitHub's real-host lifecycle, semantic ten-turn completion, restart, progress and coexistence jobs. Its remaining failures were asynchronous fixture cleanup on Ubuntu and a stale fixture write on Windows Node 20.
+
+The next revision fixes those fixture races, preserves a dedicated provider cooldown floor across controls/edits/recovery, scopes retry to the selected session, makes repeated active resume non-dispatching, and invalidates queued model-resume intent after newer user controls. Internal budget/queue/startup activation remains an explicit separate path. Recovery timers unsubscribe and stop rearming on host disposal.
+
+Local second-review unit results: 356 tests, 354 passed, two platform skips. Documentation now has a current-guide index, generated command catalog and offline link checks integrated into CI. The old manual-resume cooldown finding above is resolved by regression-tested behavior; broader architecture limitations remain intentional and documented.

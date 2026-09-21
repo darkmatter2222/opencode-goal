@@ -36,7 +36,7 @@ async function tick() {
 
 async function readOnlyGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -80,7 +80,7 @@ test("paused foreground messages remain unchanged and are not classified by life
       assert.equal(persisted.status, "paused", `foreground message ${index + 1} must not directly mutate paused Goal state`)
       assert.equal(output.parts[0].text, text, "the model must receive the user's original language and wording unchanged")
     } finally {
-      await rm(root, { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
     }
   }
 })
@@ -103,7 +103,7 @@ test("paused Goal context tells the model to decide semantically whether to use 
     assert.match(output.system[0], /whatever language/)
     assert.match(output.system[0], /status\/explanation/)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -143,8 +143,13 @@ test("model-selected resume tool waits for idle before activating and dispatchin
     assert.equal(persisted.skipNextStallCheck, undefined)
     assert.equal(fake.prompts.length, 1, "idle must activate and dispatch the normal Goal-owned continuation after model-selected resume")
     assert.match(fake.prompts[0].body.parts[0].text, /Continue working toward the active OpenCode goal/)
+    const deadline = Date.now() + 5000
+    while ((await store.load("global-steering")).dispatchLease) {
+      assert.ok(Date.now() < deadline, "dispatch cleanup must settle")
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -175,7 +180,7 @@ test("resume tool refuses non-paused Goal states instead of overriding hard cont
     const persisted = await readOnlyGoal(root)
     assert.equal(persisted.status, "usage_limited")
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -204,7 +209,7 @@ test("foreign slash-command traffic cannot wake an auto-stalled Goal", async () 
     assert.equal(persisted.stopReason, AUTO_STALL_REASON)
     assert.doesNotMatch(foreign.parts[0].text, /opencode-goal:foreign-command:/)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 

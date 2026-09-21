@@ -7,7 +7,7 @@ import OpenCodeGoalPlugin from "../dist/index.js"
 
 async function readGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -193,6 +193,7 @@ test("budget-limited goal cannot resume until its budget is raised", async () =>
     assert.equal(goal.budget.maxTurns, 2)
     assert.equal(goal.usage.turns, 1)
     assert.equal(goal.revision, 1, "budget changes must not invalidate goal evidence by changing revision")
+    assert.notEqual(raise.noReply, true, "raising an exhausted budget must allow the newly owned work turn")
     assert.match(raise.parts[0].text, /Continue working toward the active OpenCode goal/)
     assert.match(raise.parts[0].text, /turns=1\/2/)
 

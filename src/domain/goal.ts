@@ -143,6 +143,7 @@ export function editGoal(goal: GoalState, input: {
     ...next,
     id: goal.id,
     revision: goal.revision + 1,
+    ...(goal.providerRetryAt ? { providerRetryAt: goal.providerRetryAt, nextWakeAt: Math.max(next.nextWakeAt ?? 0, goal.providerRetryAt) } : {}),
     evidence: goal.evidence,
     usage: goal.usage,
     revisionTurnBaseline: goal.usage.turns,
@@ -209,5 +210,11 @@ export function resumeGoal(goal: GoalState, now = Date.now()): GoalState {
     skipNextStallCheck: _skipNextStallCheck,
     ...rest
   } = goal
-  return { ...rest, ...(goal.persistent ? { nextWakeAt: now + 15_000 } : {}), status: "active", stalledTurns: 0, observedProgressRevision: goal.progressRevision, updatedAt: now }
+  const recovery = goal.persistent && _recovery && _recovery.nextRetryAt > now ? _recovery : undefined
+  return {
+    ...rest,
+    ...(goal.persistent ? { nextWakeAt: Math.max(now + 15_000, goal.providerRetryAt ?? 0, recovery?.nextRetryAt ?? 0) } : {}),
+    ...(recovery ? { infrastructureRecovery: recovery } : {}),
+    status: "active", stalledTurns: 0, observedProgressRevision: goal.progressRevision, updatedAt: now,
+  }
 }
