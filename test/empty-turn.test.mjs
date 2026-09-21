@@ -177,7 +177,7 @@ test("two consecutive completed-but-empty Goal turns retry once then pause witho
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-empty-turn-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndBindGoal(hooks)
 
     await completeAssistant(hooks, {
@@ -258,7 +258,7 @@ test("tool activity followed by a blank final assistant tail is meaningful and c
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-tool-blank-tail-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndBindGoal(hooks)
 
     await completeAssistant(hooks, {

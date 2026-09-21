@@ -2,6 +2,7 @@ import type { FileRequirementInput, GoalBudget, GoalState } from "./types.js"
 
 export interface QueuedGoalSpec {
   id: string
+  persistent?: boolean
   objective: string
   acceptance: string[]
   constraints: string[]
@@ -21,6 +22,7 @@ export interface GoalSequenceState {
 }
 
 export interface QueueGoalInput {
+  persistent?: boolean
   objective: string
   acceptance?: string[]
   constraints?: string[]

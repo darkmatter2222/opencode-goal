@@ -1,3 +1,4 @@
+import { recoverPersistentGoal } from "./persistence-policy.js"
 import { createHash } from "node:crypto"
 import type { GoalState } from "../domain/types.js"
 
@@ -25,16 +26,17 @@ export function reportBlocker(goal: GoalState, input: {
   const consecutiveTurns = same ? (sameTurn ? previous.consecutiveTurns : previous.consecutiveTurns + 1) : 1
   const status = consecutiveTurns >= threshold ? "blocked" as const : "active" as const
   const repeatedOnNewTurn = same && !sameTurn && consecutiveTurns > 1
-  return {
+  const result: GoalState = {
     ...goal,
-    status,
+    status: goal.persistent ? "active" : status,
     blockerAudit: { fingerprint: nextFingerprint, consecutiveTurns, lastTurnID: input.turnID, reason, needed },
     // A second distinct report of the same blocker is progress toward the
     // dedicated three-turn blocker circuit breaker. Reset only the generic
     // stall counter here so it cannot preempt the third blocker turn. A new
     // or changing blocker key does not get this exemption.
     stalledTurns: repeatedOnNewTurn ? 0 : goal.stalledTurns,
-    ...(status === "blocked" ? { stopReason: reason } : {}),
+    ...(status === "blocked" && !goal.persistent ? { stopReason: reason } : {}),
     updatedAt: now,
   }
+  return goal.persistent && status === "blocked" ? recoverPersistentGoal(result, `Repeated dependency: ${reason}. Needed: ${needed}`, now) : result
 }

@@ -1,7 +1,8 @@
+import { parseGoalCommand } from "./command.js"
 import { tool } from "@opencode-ai/plugin/tool"
 import type CorePlugin from "./plugin.js"
 import { resumeGoal } from "../domain/goal.js"
-import { GoalStore, GoalStoreIntegrityError } from "../persistence/store.js"
+import { GoalStore, GoalStoreConcurrencyError, GoalStoreIntegrityError } from "../persistence/store.js"
 
 type PluginInput = Parameters<typeof CorePlugin>[0]
 type PluginHooks = Awaited<ReturnType<typeof CorePlugin>>
@@ -41,7 +42,19 @@ export function installGoalModelResume(input: PluginInput, hooks: PluginHooks): 
   const store = new GoalStore(input.directory)
   const systemHook = (hooks as any)["experimental.chat.system.transform"]
   const eventHook = hooks.event
-  const pendingResume = new Set<string>()
+  const pendingResume = new Map<string, { id: string; revision: number; generation: number }>()
+  const controlEpoch = new Map<string, number>()
+  const commandHook = hooks["command.execute.before"]
+  hooks["command.execute.before"] = async (event: any, output: any) => {
+    if (event.command === "goal") {
+      const action = parseGoalCommand(event.arguments ?? "").action
+      if (["pause", "clear", "resume", "edit", "create", "restore"].includes(action)) {
+        pendingResume.delete(event.sessionID)
+        controlEpoch.set(event.sessionID, (controlEpoch.get(event.sessionID) ?? 0) + 1)
+      }
+    }
+    await commandHook?.(event, output)
+  }
 
   ;(hooks as any)["experimental.chat.system.transform"] = async (event: any, output: any) => {
     if (typeof systemHook === "function") await systemHook(event, output)
@@ -68,7 +81,9 @@ export function installGoalModelResume(input: PluginInput, hooks: PluginHooks): 
       const properties = event?.properties ?? {}
       const sessionID = properties.sessionID ?? properties.info?.sessionID ?? properties.part?.sessionID
 
-      if (type === "session.idle" && typeof sessionID === "string" && pendingResume.delete(sessionID)) {
+      const pending = typeof sessionID === "string" ? pendingResume.get(sessionID) : undefined
+      if (type === "session.idle" && pending) {
+        pendingResume.delete(sessionID)
         let goal
         try {
           goal = await store.load(sessionID)
@@ -76,14 +91,19 @@ export function installGoalModelResume(input: PluginInput, hooks: PluginHooks): 
           if (!(error instanceof GoalStoreIntegrityError)) throw error
         }
 
-        if (goal?.status === "paused" || goal?.status === "waiting_user") {
-          await store.save({
-            ...resumeGoal(goal),
-            // The just-finished assistant turn only routed natural-language
-            // intent to this control tool; it was not a Goal-owned work turn.
-            // Exempt that idle boundary, then let core dispatch real ownership.
-            skipNextStallCheck: true,
-          })
+        if (goal && (goal.status === "paused" || goal.status === "waiting_user")
+          && goal.id === pending.id && goal.revision === pending.revision
+          && (goal.storageGeneration ?? 0) === pending.generation) {
+          try {
+            await store.save({
+              ...resumeGoal(goal),
+              // This turn only routed user intent; real work starts at idle.
+              skipNextStallCheck: true,
+            })
+          } catch (error) {
+            // A newer control always wins over the model's queued resume intent.
+            if (!(error instanceof GoalStoreConcurrencyError)) throw error
+          }
         }
       }
 
@@ -106,6 +126,7 @@ export function installGoalModelResume(input: PluginInput, hooks: PluginHooks): 
     ].join(" "),
     args: {},
     execute: async (_args: any, context: any) => {
+      const epoch = controlEpoch.get(context.sessionID) ?? 0
       let goal
       try {
         goal = await store.load(context.sessionID)
@@ -120,8 +141,9 @@ export function installGoalModelResume(input: PluginInput, hooks: PluginHooks): 
         return `Goal resume rejected: current Goal status is ${goal.status}. Use the appropriate Goal control instead.`
       }
 
+      if ((controlEpoch.get(context.sessionID) ?? 0) !== epoch) return "Goal resume rejected: a newer user control arrived."
       const previousStatus = goal.status
-      pendingResume.add(context.sessionID)
+      pendingResume.set(context.sessionID, { id: goal.id, revision: goal.revision, generation: goal.storageGeneration ?? 0 })
       return [
         "Goal resume accepted from the user's natural-language intent.",
         `Goal ${goal.id} revision ${goal.revision} remains ${previousStatus} until the idle ownership boundary.`,

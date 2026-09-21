@@ -96,7 +96,7 @@ test("prompt overflow compacts once, clears stale provider_retry state, and then
   const sessionID = "overflow-session"
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     await createBoundGoal(hooks, sessionID)
 
@@ -139,7 +139,7 @@ test("a second prompt overflow before any successful Goal-owned turn fails safe 
   const sessionID = "overflow-loop"
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     await createBoundGoal(hooks, sessionID)
 
@@ -167,7 +167,7 @@ test("unsafe host-observed context headroom compacts before the next Goal dispat
   const sessionID = "preemptive-context"
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     await createBoundGoal(hooks, sessionID)
 
@@ -207,7 +207,7 @@ test("generic invalid-request HTTP 400 uses one-shot compaction when host teleme
   const sessionID = "ambiguous-overflow"
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     await createBoundGoal(hooks, sessionID)
 

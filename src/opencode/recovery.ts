@@ -111,6 +111,9 @@ export async function captureStartupGoals(directory: string): Promise<GoalState[
 }
 
 export function scheduleStartupRecovery(input: PluginInput, hooks: PluginHooks, startupGoals: GoalState[]): void {
+  // Persistent goals use the periodic supervisor and core dispatch lease; do not
+  // create a second startup dispatcher or a blocking bootstrap barrier.
+  startupGoals = startupGoals.filter(goal => !goal.persistent)
   if (!startupGoals.length || typeof hooks.event !== "function") return
 
   const originalEvent = hooks.event
@@ -231,7 +234,7 @@ async function recoverStartupGoals(
       // accounting, so restore the unchanged persisted snapshot before any host
       // prompt is sent. No interrupted turn is closed or counted here.
       const output: any = { parts: [{ type: "text", text: "" }] }
-      await commandHook({ command: "goal", sessionID, arguments: "resume" }, output)
+      await commandHook({ command: "goal", sessionID, arguments: "resume", __goalActivation: true }, output)
       const prepared = await store.load(sessionID)
       if (!prepared || prepared.id !== current.id || prepared.revision !== current.revision || prepared.status !== "active") {
         runtime.pending.delete(sessionID)

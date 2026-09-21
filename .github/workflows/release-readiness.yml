@@ -33,6 +33,8 @@ jobs:
       - run: npm install
       - run: npm run check
       - run: npm test
+      - name: Check documentation and command catalog
+        run: node scripts/docs-check.mjs
       - name: Run adversarial eval corpus
         run: npm run eval -- --json eval-report.json
       - name: Build, pack, install, and import publish tarball

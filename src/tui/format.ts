@@ -52,6 +52,8 @@ function validGoal(value: unknown, sessionID: string): value is {
   id: string
   objective: string
   status: string
+  persistent?: boolean
+  infrastructureRecovery?: { nextRetryAt: number; reason: string }
   requirements: Array<{ required?: boolean; status?: string }>
   usage?: { turns?: number; tokens?: number }
   budget?: { maxTurns?: number; maxTokens?: number }
@@ -90,6 +92,11 @@ export function formatGoalSidebar(root: string, sessionID: string): string {
     const tokens = goal.usage?.tokens ?? 0
     const maxTokens = goal.budget?.maxTokens || "∞"
     lines.push(`turns ${turns}/${maxTurns} · tokens ${tokens}/${maxTokens}`)
+    if (goal.persistent && goal.status === "active") {
+      const due = goal.infrastructureRecovery?.nextRetryAt
+      lines.push(due ? `Goal in effect · recovery ${Math.max(0, Math.ceil((due - Date.now()) / 1000))}s` : "Goal in effect · until verified")
+      lines.push("/goal why · /goal help")
+    }
   }
 
   if (sequenceRead.state === "invalid" || (sequenceRead.state === "valid" && !sequence)) {

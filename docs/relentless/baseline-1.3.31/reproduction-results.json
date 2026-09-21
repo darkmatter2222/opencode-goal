@@ -1,0 +1,44 @@
+{
+  "baseline": "75408cd6cefedd39466a7535defa2d478ae92a38",
+  "note": "Synthetic event/unit probes; not a diagnosis of the user installation.",
+  "results": [
+    {
+      "probe": "stall-without-completed-turn",
+      "status": "paused",
+      "turns": 0,
+      "reason": "Paused after 3 continuation turns without host-observed progress."
+    },
+    {
+      "probe": "duplicate-idle-full-plugin",
+      "status": "paused",
+      "turns": 0,
+      "prompts": 2
+    },
+    {
+      "probe": "last-child-cleared-no-parent-wake",
+      "status": "active",
+      "prompts": 0
+    },
+    {
+      "probe": "resolved-sdk-error-ignored",
+      "status": "active",
+      "prompts": 1,
+      "recovery": null
+    },
+    {
+      "probe": "blocker-count-survives-progress-and-gaps",
+      "status": "blocked",
+      "count": 3
+    },
+    {
+      "probe": "second-assistant-same-parent-unowned",
+      "owned": false
+    },
+    {
+      "probe": "shell-fingerprints-accepted-as-mutation-turns",
+      "verdict": "proven",
+      "fingerprints": 3,
+      "logicalTurns": 1
+    }
+  ]
+}

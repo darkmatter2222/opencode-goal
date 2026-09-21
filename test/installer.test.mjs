@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const installer = path.join(root, "dist", "install.js")
 const packageVersion = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version
-const packageSpec = `@bybrawe/opencode-goal@${packageVersion}`
-const managedCommandMarker = "<!-- managed-by:@bybrawe/opencode-goal -->"
+const packageSpec = `@darkmatter2222/opencode-relentless@${packageVersion}`
+const managedCommandMarker = "<!-- managed-by:@darkmatter2222/opencode-relentless -->"
 
 async function runInstaller(configDir, args = []) {
   return await new Promise((resolve, reject) => {
@@ -96,8 +96,8 @@ test("installer upgrades old package pins, preserves other plugins, and removes 
       $schema: "https://opencode.ai/config.json",
       plugin: [
         "other-plugin@2.0.0",
-        "@bybrawe/opencode-goal",
-        "@bybrawe/opencode-goal@1.0.0",
+        "@darkmatter2222/opencode-relentless",
+        "@darkmatter2222/opencode-relentless@1.0.0",
         "./plugins/opencode-goal.js",
       ],
     }, null, 2), "utf8")
@@ -204,7 +204,7 @@ test("uninstall removes Goal registrations, managed command, and local copies wh
   // Preserve this OpenCode config comment.
   "plugin": [
     "other-plugin@2.0.0",
-    "@bybrawe/opencode-goal@1.0.0",
+    "@darkmatter2222/opencode-relentless@1.0.0",
     "./plugins/opencode-goal.ts",
   ],
   "permission": { "read": "allow" },
@@ -278,4 +278,18 @@ test("installer and uninstall fail closed when plugin config is not an array", a
   } finally {
     await rm(temp, { recursive: true, force: true })
   }
+})
+
+test("installer migrates Ryan's single upstream registration and managed command", async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "relentless-migration-"))
+  try {
+    await writeFile(path.join(configDir, "opencode.json"), JSON.stringify({plugin:["@bybrawe/opencode-goal@1.3.31"]}))
+    await mkdir(path.join(configDir, "commands"))
+    await writeFile(path.join(configDir, "commands", "goal.md"), "<!-- managed-by:@bybrawe/opencode-goal -->\nold bridge")
+    const result = await runInstaller(configDir)
+    assert.equal(result.code, 0, result.stderr)
+    const installed = JSON.parse(await readFile(path.join(configDir, "opencode.json"), "utf8"))
+    assert.deepEqual(installed.plugin, [packageSpec])
+    await assertManagedGoalCommand(configDir)
+  } finally { await rm(configDir, {recursive:true,force:true}) }
 })

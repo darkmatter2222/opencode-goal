@@ -7,7 +7,7 @@ import OpenCodeGoalPlugin from "../dist/index.js"
 
 async function state(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }

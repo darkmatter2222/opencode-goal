@@ -127,11 +127,24 @@ export function installTaskDeferral(input: PluginInput, hooks: PluginHooks): voi
     }
 
     if (["session.idle", "session.error", "session.deleted"].includes(type) && childParent.has(sessionID)) {
+      const parentID = childParent.get(sessionID)!
       clearChild(sessionID)
       await eventHook(eventInput)
+      const parent = await store.load(parentID)
+      if (parent?.persistent && parent.status === "active" && !activeCount(parentID)) {
+        await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: parentID } } })
+      }
       return
     }
 
+    if (type === "session.idle" && eventInput?.event?.properties?.__relentlessReconcile) {
+      const statuses = eventInput.event.properties.__relentlessStatuses
+      if (statuses && typeof statuses === "object") {
+        for (const child of backgroundChildren.get(sessionID) ?? []) {
+          if ((statuses[child]?.type ?? "idle") === "idle") clearChild(child)
+        }
+      }
+    }
     if (type === "session.idle" && activeCount(sessionID) > 0) {
       const goal = await store.load(sessionID)
       if (goal?.status === "active") {

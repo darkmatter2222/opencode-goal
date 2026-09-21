@@ -71,7 +71,7 @@ function parseContainsContract(value: string): FileRequirementInput {
 
 function parseLimit(option: string, raw: string | undefined, integer = false): number {
   if (raw === undefined) throw new Error(`${option} expects a non-negative number`)
-  const value = integer ? Number(raw) : Number.parseFloat(raw)
+  const value = integer ? Number(raw) : Number(raw)
   if (!Number.isFinite(value) || value < 0 || (integer && !Number.isInteger(value))) {
     throw new Error(`${option} expects a non-negative ${integer ? "integer" : "number"}`)
   }
@@ -128,11 +128,16 @@ function parseQueueCommand(list: string[]): ParsedGoalCommand {
 }
 
 export function parseGoalCommand(input: string): ParsedGoalCommand {
+  const explicitCreate = /^new(?:\s|$)/i.test(input.trim())
+  if (explicitCreate) input = input.trim().slice(3).trim()
+  if (explicitCreate && /^--(?:\s|$)/.test(input)) {
+    return { ...empty("create"), objective: input.slice(2).trim() }
+  }
   const multiline = parseMultilineWorkCommand(input)
-  if (multiline) return multiline
+  if (multiline) return explicitCreate ? { ...empty("create"), objective: input.trim() } : multiline
 
   const list = tokens(input.trim())
-  const sub = (list[0] ?? "").toLowerCase()
+  const sub = explicitCreate ? "" : (list[0] ?? "").toLowerCase()
   if (sub === "doctor") {
     if (list.length !== 1) throw new Error("/goal doctor does not accept arguments")
     return empty("doctor")

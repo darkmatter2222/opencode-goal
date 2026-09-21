@@ -20,7 +20,7 @@ const SHELL_COMMANDS = MODE === "repeated"
       `node -e "process.stdout.write('SHELL_PROGRESS_2')"`,
       `node -e "process.stdout.write('SHELL_PROGRESS_3')"`,
     ]
-const EXPECT_PAUSE = MODE === "repeated"
+const EXPECT_RECOVERY = MODE === "repeated"
 
 function resolveOpenCodeBinary() {
   if (!isWindows) return path.join(repoRoot, "node_modules", ".bin", "opencode")
@@ -435,10 +435,12 @@ async function main() {
       async () => {
         lastState = await readGoal(workspace)
         const shellFingerprints = (lastState?.progressFingerprints ?? []).filter((item) => /^shell:[a-f0-9]{64}$/.test(item))
-        if (EXPECT_PAUSE) {
+        if (EXPECT_RECOVERY) {
           return provider.stats.shellCalls === SHELL_COMMANDS.length
             && provider.stats.shellTurnsFinished === SHELL_COMMANDS.length
-            && lastState?.status === "paused"
+            && lastState?.status === "active"
+            && lastState?.persistent === true
+            && lastState?.infrastructureRecovery?.nextRetryAt > Date.now()
             && lastState?.stalledTurns === 3
             && shellFingerprints.length === 1
         }
@@ -447,8 +449,8 @@ async function main() {
           && provider.stats.holdStarted === 1
           && shellFingerprints.length === SHELL_COMMANDS.length
       },
-      EXPECT_PAUSE
-        ? "four real repeated shell Goal turns to reach the three-turn stall guard"
+      EXPECT_RECOVERY
+        ? "four real repeated shell Goal turns to schedule persistent recovery"
         : "three real distinct shell-only Goal turns to complete without tripping the stall guard",
       diagnostics,
     )
@@ -458,15 +460,18 @@ async function main() {
     const shellFingerprints = lastState.progressFingerprints.filter((item) => /^shell:[a-f0-9]{64}$/.test(item))
     const shellNotes = lastState.progressNotes.filter((item) => item?.summary?.includes("Goal-owned shell command"))
 
-    if (EXPECT_PAUSE) {
-      assert.equal(lastState.status, "paused", `three repeated no-progress shell turns must pause the Goal: ${diagnostics()}`)
+    if (EXPECT_RECOVERY) {
+      assert.equal(lastState.status, "active", `three repeated no-progress shell turns must keep the Goal enabled: ${diagnostics()}`)
       assert.equal(lastState.progressRevision, 1, "only the first occurrence of an identical shell command may count as progress")
       assert.equal(lastState.observedProgressRevision, 1, "the single shell progress revision must remain settled")
       assert.equal(lastState.stalledTurns, 3, "the three deduplicated repeated turns must reach the normal stall limit")
-      assert.match(lastState.stopReason ?? "", /3 continuation turns without host-observed progress/)
+      assert.match(lastState.stopReason ?? "", /No new observed progress in 3 turns/)
       assert.equal(shellFingerprints.length, 1, "repeating one shell command must persist only one shell fingerprint")
       assert.equal(shellNotes.length, 1, "repeating one shell command must persist only one shell progress note")
-      assert.equal(provider.stats.holdStarted, 0, "a paused Goal must not dispatch another autonomous continuation")
+      assert.equal(provider.stats.holdStarted, 0, "backoff must defer the next autonomous continuation")
+      await waitFor(async () => provider.stats.holdStarted === 1,
+        "persistent recovery to resume after the retry deadline", diagnostics, 30_000)
+      assert.equal((await readGoal(workspace)).status, "active")
     } else {
       assert.equal(lastState.status, "active", `three distinct shell-only turns must keep the Goal active: ${diagnostics()}`)
       assert.equal(lastState.progressRevision, SHELL_COMMANDS.length, `each distinct real shell turn should increment progress exactly once: ${JSON.stringify(lastState.progressFingerprints)}`)

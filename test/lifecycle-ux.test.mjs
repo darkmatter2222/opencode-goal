@@ -8,7 +8,7 @@ import { GoalStore } from "../dist/persistence/store.js"
 
 async function readOnlyGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -88,7 +88,7 @@ test("creating a second live Goal shows actionable guidance instead of throwing 
     assert.equal(persisted.status, "active")
     assert.ok(fake.toasts.some((item) => item?.body?.variant === "warning" && /unfinished Goal/.test(item?.body?.message ?? "")))
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
   }
 })
 
@@ -101,10 +101,10 @@ test("paused Goal UX explains explicit command resume and model-decided natural-
     await command(hooks, "keep this target")
     const paused = await command(hooks, "pause")
     assert.equal(paused.noReply, true)
-    assert.match(paused.parts[0].text, /Goal paused\. Autonomous Goal continuation is now off\./)
+    assert.match(paused.parts[0].text, /Paused by you/)
     assert.match(paused.parts[0].text, /\/goal resume/)
-    assert.match(paused.parts[0].text, /normal language/)
-    assert.match(paused.parts[0].text, /interpreted by the model/)
+    assert.match(paused.parts[0].text, /Work is preserved/)
+    assert.match(paused.parts[0].text, /running tools may still be cancelling/)
 
     const conflict = await command(hooks, "start a different target")
     assert.equal(conflict.noReply, true)
@@ -115,7 +115,7 @@ test("paused Goal UX explains explicit command resume and model-decided natural-
     assert.equal(persisted.objective, "keep this target")
     assert.equal(persisted.status, "paused")
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
   }
 })
 
@@ -145,7 +145,7 @@ test("ordinary foreground chat does not directly reactivate an automatically pau
     assert.equal(persisted.status, "paused")
     assert.equal(persisted.stopReason, reason)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
   }
 })
 
@@ -187,6 +187,6 @@ test("natural-language continuation is model-controlled and activates at the idl
     assert.equal(fake.prompts.length, 1)
     assert.match(fake.prompts[0].body.parts[0].text, /Continue working toward the active OpenCode goal/)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
   }
 })

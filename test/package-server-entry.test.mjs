@@ -25,7 +25,7 @@ test("package exposes a dedicated OpenCode server entrypoint instead of legacy-l
 
   const serverModule = await import(pathToFileURL(path.join(root, "dist", "server.js")).href)
   assert.deepEqual(Object.keys(serverModule), ["default"])
-  assert.equal(serverModule.default?.id, "@bybrawe/opencode-goal")
+  assert.equal(serverModule.default?.id, "@darkmatter2222/opencode-relentless")
   assert.equal(typeof serverModule.default?.server, "function")
   assert.equal(serverModule.default.server, publicModule.default)
 })

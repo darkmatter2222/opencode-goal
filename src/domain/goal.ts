@@ -1,3 +1,4 @@
+import { recoverPersistentGoal } from "../runtime/persistence-policy.js"
 import { randomUUID } from "node:crypto"
 import { currentGoalRuntimeFingerprint } from "../runtime/fingerprint.js"
 import type { FileRequirementInput, GoalBudget, GoalExecutionContext, GoalRequirement, GoalRequirementSource, GoalState, VerificationKind } from "./types.js"
@@ -50,6 +51,7 @@ function existingConstraints(goal: GoalState): string[] {
 
 export function createGoal(input: {
   sessionID: string
+  persistent?: boolean
   objective: string
   acceptance?: string[]
   constraints?: string[]
@@ -87,6 +89,7 @@ export function createGoal(input: {
 
   return {
     schemaVersion: 1,
+    ...(input.persistent ? { persistent: true, nextWakeAt: now + 15_000 } : {}),
     id: randomUUID(),
     sessionID: input.sessionID,
     objective,
@@ -126,6 +129,7 @@ export function editGoal(goal: GoalState, input: {
     .map((item) => ({ file: item.file!, ...(item.contains ? { contains: item.contains } : {}) }))
   const next = createGoal({
     sessionID: goal.sessionID,
+    persistent: goal.persistent === true,
     objective: input.objective,
     acceptance: input.acceptance ?? existingAcceptance(goal),
     constraints: input.constraints ?? existingConstraints(goal),
@@ -139,6 +143,7 @@ export function editGoal(goal: GoalState, input: {
     ...next,
     id: goal.id,
     revision: goal.revision + 1,
+    ...(goal.providerRetryAt ? { providerRetryAt: goal.providerRetryAt, nextWakeAt: Math.max(next.nextWakeAt ?? 0, goal.providerRetryAt) } : {}),
     evidence: goal.evidence,
     usage: goal.usage,
     revisionTurnBaseline: goal.usage.turns,
@@ -171,11 +176,13 @@ export function replaceGoalConstraints(goal: GoalState, constraints: string[], n
 
 export function pauseGoal(goal: GoalState, reason = "paused by user", now = Date.now()): GoalState {
   if (goal.status === "completed") return goal
-  return { ...goal, status: "paused", stopReason: reason, updatedAt: now }
+  const { dispatchLease: _lease, ...rest } = goal
+  return { ...rest, status: "paused", stopReason: reason, updatedAt: now }
 }
 
 export function waitForUserGoal(goal: GoalState, input: { reason: string; needed?: string; now?: number }): GoalState {
   if (goal.status === "completed") return goal
+  if (goal.persistent) return recoverPersistentGoal(goal, `Dependency: ${input.reason}. Needed: ${input.needed ?? "unspecified"}`, input.now)
   const reason = input.reason.replace(/\\s+/g, " ").trim()
   const needed = (input.needed ?? "").replace(/\\s+/g, " ").trim()
   if (!reason) throw new Error("waiting-user reason must not be empty")
@@ -193,6 +200,8 @@ export function waitForUserGoal(goal: GoalState, input: { reason: string; needed
 export function resumeGoal(goal: GoalState, now = Date.now()): GoalState {
   if (goal.status === "completed") return goal
   const {
+    dispatchLease: _lease,
+    infrastructureRecovery: _recovery,
     blockerAudit: _blocker,
     stopReason: _reason,
     pendingContinuation: _pendingContinuation,
@@ -201,5 +210,11 @@ export function resumeGoal(goal: GoalState, now = Date.now()): GoalState {
     skipNextStallCheck: _skipNextStallCheck,
     ...rest
   } = goal
-  return { ...rest, status: "active", stalledTurns: 0, observedProgressRevision: goal.progressRevision, updatedAt: now }
+  const recovery = goal.persistent && _recovery && _recovery.nextRetryAt > now ? _recovery : undefined
+  return {
+    ...rest,
+    ...(goal.persistent ? { nextWakeAt: Math.max(now + 15_000, goal.providerRetryAt ?? 0, recovery?.nextRetryAt ?? 0) } : {}),
+    ...(recovery ? { infrastructureRecovery: recovery } : {}),
+    status: "active", stalledTurns: 0, observedProgressRevision: goal.progressRevision, updatedAt: now,
+  }
 }

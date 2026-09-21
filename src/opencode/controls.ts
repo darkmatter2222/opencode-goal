@@ -23,8 +23,10 @@ function replaceParts(parts: any[], text: string) {
 export function formatDetailedGoalStatus(goal: GoalState | null): string {
   if (!goal) return "No active goal."
   const req = goal.requirements.map((item, i) => `${i + 1}. [${item.status}] ${item.text}`).join("\n")
+  const retry = Math.max(goal.infrastructureRecovery?.nextRetryAt ?? 0, (goal.providerRetryAt ?? 0) > Date.now() ? goal.providerRetryAt! : 0)
+  const continuity = goal.persistent ? `\nContinuation: until verified (host must be running)${retry ? `\nNext recovery: ${new Date(retry).toISOString()}` : goal.status === "active" ? "\nRecovery watchdog: checks idle goals every 5s" : ""}` : ""
   const stop = goal.stopReason ? `\nStop reason: ${goal.stopReason}` : ""
-  return `Goal: ${goal.objective}\nStatus: ${goal.status}\nRevision: ${goal.revision}\nBudget: ${formatGoalBudget(goal)}\nModel context: ${formatModelContext(goal)}${stop}\nRequirements:\n${req}`
+  return `Goal: ${goal.objective}\nStatus: ${goal.status}\nRevision: ${goal.revision}\nBudget: ${formatGoalBudget(goal)}\nModel context: ${formatModelContext(goal)}${continuity}${stop}\nRequirements:\n${req}`
 }
 
 function acceptanceRequirements(goal: GoalState): GoalRequirement[] {
@@ -280,13 +282,14 @@ export function enhanceGoalControls(input: PluginInput, hooks: PluginHooks): voi
     await store.save(next)
 
     if (beforeStatus === "budget_limited" && next.status === "active") {
-      await commandHook({ ...event, arguments: "resume" }, output)
+      await commandHook({ ...event, arguments: "resume", __goalActivation: true }, output)
       const resumed = await store.load(event.sessionID)
       if (!resumed || resumed.id !== next.id || resumed.revision !== next.revision || resumed.status !== "active") {
         throw new Error("Goal changed while seeding budget-resume ownership")
       }
       next.storageGeneration = resumed.storageGeneration ?? 0
       await store.save(next)
+      if (output.noReply) return // Preserve an explicit recovery/cooldown receipt.
       const ownedText = textFromParts(output.parts)
       const shown = continuationPrompt(next)
       if (shown !== ownedText) translatedOutput(output, shown, ownedText, translations, event.sessionID)

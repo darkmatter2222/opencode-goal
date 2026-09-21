@@ -10,7 +10,7 @@ const npmCLI = process.env.npm_execpath
 const runtimeDependency = "@opencode-ai/plugin"
 const runtimeDependencyRange = ">=1.4.0 <2"
 const minimumOpenCode = ">=1.4.0"
-const managedCommandMarker = "<!-- managed-by:@bybrawe/opencode-goal -->"
+const managedCommandMarker = "<!-- managed-by:@darkmatter2222/opencode-relentless -->"
 
 function parseArgs(argv) {
   const options = { jsonPath: null }
@@ -134,29 +134,29 @@ async function main() {
       import fs from "node:fs";
       import path from "node:path";
       import { fileURLToPath } from "node:url";
-      const mod = await import("@bybrawe/opencode-goal");
+      const mod = await import("@darkmatter2222/opencode-relentless");
       if (typeof mod.default !== "function") throw new Error("default public API plugin export is missing");
       if (typeof mod.createGoal !== "function") throw new Error("createGoal export is missing");
       if (typeof mod.parseGoalCommand !== "function") throw new Error("parseGoalCommand export is missing");
       if (typeof mod.GoalSequenceStore !== "function") throw new Error("GoalSequenceStore export is missing");
       if (Object.keys(mod).length <= 1) throw new Error("public root API should remain a multi-export library barrel");
-      const server = await import("@bybrawe/opencode-goal/server");
+      const server = await import("@darkmatter2222/opencode-relentless/server");
       if (JSON.stringify(Object.keys(server)) !== JSON.stringify(["default"])) throw new Error("server entrypoint must export only the plugin module");
-      if (server.default?.id !== "@bybrawe/opencode-goal") throw new Error("server plugin id is incorrect");
+      if (server.default?.id !== "@darkmatter2222/opencode-relentless") throw new Error("server plugin id is incorrect");
       if (typeof server.default?.server !== "function") throw new Error("server plugin export is missing");
       if (server.default.server !== mod.default) throw new Error("server entrypoint does not delegate to the public plugin implementation");
       const toolModule = await import("@opencode-ai/plugin/tool");
       if (typeof toolModule.tool !== "function") throw new Error("runtime OpenCode tool dependency is missing");
-      const tui = await import("@bybrawe/opencode-goal/tui");
+      const tui = await import("@darkmatter2222/opencode-relentless/tui");
       if (typeof tui.default?.tui !== "function") throw new Error("TUI plugin export is missing");
       if (tui.default?.id !== "opencode-goal") throw new Error("TUI plugin id is incorrect");
-      const entryDir = path.dirname(fileURLToPath(import.meta.resolve("@bybrawe/opencode-goal")));
+      const entryDir = path.dirname(fileURLToPath(import.meta.resolve("@darkmatter2222/opencode-relentless")));
       if (!fs.existsSync(path.join(entryDir, "index.d.ts"))) throw new Error("published type declarations are missing");
       console.log("consumer import ok");
     `
     const consumerResult = run(process.execPath, ["--input-type=module", "--eval", probe], { cwd: consumer })
 
-    const installedRoot = path.join(consumer, "node_modules", "@bybrawe", "opencode-goal")
+    const installedRoot = path.join(consumer, "node_modules", "@darkmatter2222", "opencode-relentless")
     const installedPackageJSON = JSON.parse(await readFile(path.join(installedRoot, "package.json"), "utf8"))
     const installedBin = installedPackageJSON.bin?.["opencode-goal"]
     if (installedBin !== "bin/opencode-goal.js") {

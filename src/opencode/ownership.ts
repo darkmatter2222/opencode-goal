@@ -65,7 +65,10 @@ export class TurnOwnership {
   rememberUserMessage(sessionID: string, userMessageID: string | undefined, owner: GoalTurnOwner) {
     const now = Date.now()
     this.#pendingPromptOwnerBySession.set(sessionID, { owner, expiresAt: now + 60_000 })
-    if (userMessageID) this.#userOwners.set(userMessageID, owner)
+    if (userMessageID) {
+      this.#userOwners.set(userMessageID, owner)
+      while (this.#userOwners.size > 1024) this.#userOwners.delete(this.#userOwners.keys().next().value!)
+    }
   }
 
   #rememberAssistant(messageID: string, owner: GoalTurnOwner) {
@@ -106,7 +109,8 @@ export class TurnOwnership {
         this.#activeBySession.set(sessionID, { messageID, owner })
       }
     }
-    if (parentID && info?.time?.completed) this.#userOwners.delete(parentID)
+    // One user request may produce multiple assistant/tool rounds. Retain the
+    // bounded parent mapping until normal cache eviction, not first completion.
     return owner
   }
 

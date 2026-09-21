@@ -1,3 +1,4 @@
+import { withDeadline, sdkResult } from "../runtime/deadline.js"
 import type CorePlugin from "./plugin.js"
 import type { GoalInfrastructureRecoveryKind, GoalState } from "../domain/types.js"
 import { scanRecoverableGoalStates } from "../persistence/diagnostics.js"
@@ -86,7 +87,7 @@ export function createGoalInfrastructureTransport(client: any) {
       }
       return async (...args: any[]) => {
         try {
-          return await value.apply(target, args)
+          return sdkResult(await value.apply(target, args))
         } catch (error) {
           const sessionID = sessionIDFromPromptArgs(args)
           if (sessionID && isTransientInfrastructureError(error)) {
@@ -121,6 +122,7 @@ export function installGoalInfrastructureRecovery(
   transport?: ReturnType<typeof createGoalInfrastructureTransport>,
   options: { retryBaseMs?: number; retryMaxMs?: number; retryPollMs?: number; retryWatchdogMs?: number } = {},
 ): void {
+  let closed = false
   const store = new GoalStore(input.directory)
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   const retrySeenAt = new Map<string, number>()
@@ -138,9 +140,9 @@ export function installGoalInfrastructureRecovery(
 
   function armTimer(sessionID: string, delayMs: number) {
     cancelTimer(sessionID)
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
     const timer = setTimeout(() => {
-      void wake(sessionID).catch(() => cancelTimer(sessionID))
+      void wake(sessionID).catch(() => armTimer(sessionID, retryPollMs))
     }, Math.max(0, delayMs))
     ;(timer as any).unref?.()
     timers.set(sessionID, timer)
@@ -153,7 +155,7 @@ export function installGoalInfrastructureRecovery(
     for (const args of [{ query: { directory: input.directory } }, {}]) {
       attempted = true
       try {
-        const raw = await status.call(input.client.session, args)
+        const raw: any = sdkResult(await withDeadline(status.call(input.client.session, args), 5_000, "Host status"))
         const data = raw && typeof raw === "object" && "data" in raw ? raw.data : raw
         if (!data || typeof data !== "object" || Array.isArray(data)) continue
         const entry = (data as Record<string, any>)[sessionID]
@@ -177,16 +179,16 @@ export function installGoalInfrastructureRecovery(
 
   async function schedule(sessionID: string): Promise<void> {
     cancelTimer(sessionID)
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
     const goal = await store.load(sessionID)
     if (!goal || !isInfrastructureWaiting(goal)) return
     armTimer(sessionID, goal.infrastructureRecovery!.nextRetryAt - Date.now())
   }
 
   async function postponeWhileHostOwnsSession(sessionID: string, goal: GoalState): Promise<boolean> {
-    if (completionWins.has(sessionID)) return true
+    if (closed || completionWins.has(sessionID)) return true
     const live = await liveSessionStatus(sessionID)
-    if (completionWins.has(sessionID)) return true
+    if (closed || completionWins.has(sessionID)) return true
     if (live !== "retry" && live !== "busy" && live !== "unknown") {
       retrySeenAt.delete(sessionID)
       return false
@@ -222,7 +224,7 @@ export function installGoalInfrastructureRecovery(
 
   async function wake(sessionID: string): Promise<void> {
     cancelTimer(sessionID)
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
     let goal = await store.load(sessionID)
     if (completionWins.has(sessionID) || !goal || !isInfrastructureWaiting(goal)) return
     const now = Date.now()
@@ -231,11 +233,11 @@ export function installGoalInfrastructureRecovery(
       return
     }
     if (await postponeWhileHostOwnsSession(sessionID, goal)) return
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
 
     goal = markInfrastructureRecoveryDispatched(goal, now)
     const saved = await saveWithReload(store, goal)
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
     if (saved.status !== "active" || saved.infrastructureRecovery?.nextRetryAt !== 0) return
     const hook = hooks.event
     if (typeof hook !== "function") return
@@ -253,11 +255,11 @@ export function installGoalInfrastructureRecovery(
     reason: string,
     allowStatuses: GoalState["status"][] = ["active", "paused", "blocked"],
   ): Promise<GoalState | undefined> {
-    if (completionWins.has(sessionID)) return undefined
+    if (closed || completionWins.has(sessionID)) return undefined
     for (let attempt = 0; attempt < MAX_PERSIST_RETRIES; attempt += 1) {
-      if (completionWins.has(sessionID)) return undefined
+      if (closed || completionWins.has(sessionID)) return undefined
       const latest = await store.load(sessionID)
-      if (!latest || !allowStatuses.includes(latest.status) || latest.status === "completed") return undefined
+      if (!latest || !allowStatuses.includes(latest.status) || latest.status === "completed" || (latest.status === "paused" && !legacyInfrastructureRecovery(latest))) return undefined
       const next = enterInfrastructureRecovery(latest, {
         kind,
         reason,
@@ -293,6 +295,7 @@ export function installGoalInfrastructureRecovery(
   }
 
   async function inspectLegacyOrCorePause(sessionID: string): Promise<boolean> {
+    if (closed) return false
     const goal = await store.load(sessionID)
     if (!goal) return false
     const legacy = legacyInfrastructureRecovery(goal)
@@ -301,7 +304,7 @@ export function installGoalInfrastructureRecovery(
   }
 
   async function ensureProviderRetryRecovery(sessionID: string): Promise<void> {
-    if (completionWins.has(sessionID)) return
+    if (closed || completionWins.has(sessionID)) return
     const goal = await store.load(sessionID)
     if (!goal || goal.status !== "active" || goal.infrastructureRecovery) return
     await enter(sessionID, "provider_retry", "OpenCode reported session.status=retry for an active Goal turn.", ["active"])
@@ -313,7 +316,7 @@ export function installGoalInfrastructureRecovery(
     // Wait briefly for that authoritative cleanup instead of racing it with an
     // `active -> recovery` write that the later core pause could overwrite.
     for (let attempt = 0; attempt < CORE_CLEANUP_POLLS; attempt += 1) {
-      if (completionWins.has(sessionID)) return
+      if (closed || completionWins.has(sessionID)) return
       const goal = await store.load(sessionID)
       if (!goal || goal.status === "completed") return
       const legacy = legacyInfrastructureRecovery(goal)
@@ -342,7 +345,8 @@ export function installGoalInfrastructureRecovery(
     }
   }
 
-  transport?.subscribe((sessionID) => {
+  const unsubscribe = transport?.subscribe((sessionID) => {
+    if (closed) return
     const timer = setTimeout(() => {
       void recoverTransientPromptAfterCoreCleanup(sessionID).catch(() => undefined)
     }, 0)
@@ -354,6 +358,13 @@ export function installGoalInfrastructureRecovery(
     hooks.event = async (eventInput: any) => {
       const sessionID = eventSessionID(eventInput)
       const type = String(eventInput?.event?.type ?? "")
+      if (["server.instance.disposed", "server.disposed"].includes(type)) {
+        closed = true
+        for (const session of timers.keys()) cancelTimer(session)
+        unsubscribe?.()
+        retrySeenAt.clear()
+      }
+      if (closed) { await originalEvent(eventInput); return }
       const marked = eventInput?.event?.properties?.[INFRA_EVENT_MARKER] === true
       const completionEvent = Boolean(sessionID && isCompletedAssistantEvent(eventInput))
 
@@ -423,6 +434,7 @@ export function installGoalInfrastructureRecovery(
       void (async () => {
         const states = await scanRecoverableGoalStates(input.directory)
         for (const state of states) {
+          if (closed) return
           const legacy = legacyInfrastructureRecovery(state)
           if (legacy) {
             await enter(state.sessionID, legacy.kind, legacy.reason)

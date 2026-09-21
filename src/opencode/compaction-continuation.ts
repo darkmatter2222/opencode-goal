@@ -123,6 +123,7 @@ export function installGoalCompactionContinuation(input: PluginInput, hooks: Plu
       return
     }
 
+    if (eventInput?.event?.properties?.__relentlessReconcile) clear(sessionID)
     const state = states.get(sessionID)
     const marker = markerToken(eventInput)
     if (marker !== undefined) {

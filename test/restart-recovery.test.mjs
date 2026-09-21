@@ -21,7 +21,7 @@ async function waitFor(predicate, description, timeoutMs = 2_000) {
 
 async function readGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -65,7 +65,7 @@ test("restart recovery preserves interrupted-turn accounting and prompt ownershi
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-restart-"))
   try {
     const first = pendingClient()
-    const beforeRestart = await OpenCodeGoalPlugin({ client: first.client, directory: root })
+    const beforeRestart = await OpenCodeGoalPlugin({ client: first.client, directory: root }, { persistent: false })
     const commandOutput = { parts: [{ type: "text", text: "raw" }] }
 
     await beforeRestart["command.execute.before"](
@@ -129,7 +129,7 @@ test("restart recovery preserves interrupted-turn accounting and prompt ownershi
     // request is our bootstrap barrier: while OpenCode is still initializing the
     // directory instance it remains pending, and recovery must not prompt.
     const second = pendingClient({ holdList: true })
-    const afterRestart = await OpenCodeGoalPlugin({ client: second.client, directory: root })
+    const afterRestart = await OpenCodeGoalPlugin({ client: second.client, directory: root }, { persistent: false })
     await tick()
     assert.equal(second.prompts.length, 0, "plugin construction must not dispatch restart recovery")
 

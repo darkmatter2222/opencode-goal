@@ -95,6 +95,11 @@ function validateState(value: unknown): GoalState | null {
   if (state.schemaVersion !== 1 || typeof state.id !== "string" || typeof state.sessionID !== "string" || typeof state.objective !== "string") return null
   if (!Array.isArray(state.requirements) || !Array.isArray(state.evidence) || !validGeneration(state.storageGeneration)) return null
   if (!validRuntimeFingerprint(state.runtimeFingerprint)) return null
+  if (state.persistent !== undefined && typeof state.persistent !== "boolean") return null
+  if (state.providerRetryAt !== undefined && (typeof state.providerRetryAt !== "number" || !Number.isFinite(state.providerRetryAt) || state.providerRetryAt < 0)) return null
+  if (state.lastClosedTurn !== undefined && (!Number.isSafeInteger(state.lastClosedTurn) || state.lastClosedTurn < 0)) return null
+  if (state.nextWakeAt !== undefined && (!Number.isFinite(state.nextWakeAt) || state.nextWakeAt < 0)) return null
+  if (state.dispatchLease !== undefined && (!state.dispatchLease || typeof state.dispatchLease !== "object" || typeof state.dispatchLease.owner !== "string" || !Number.isFinite(state.dispatchLease.expiresAt))) return null
   if (state.pendingContinuation !== undefined && typeof state.pendingContinuation !== "boolean") return null
   if (state.emptyTurnCount !== undefined && (!Number.isSafeInteger(state.emptyTurnCount) || Number(state.emptyTurnCount) < 0)) return null
   if (state.lastEmptyTurnAt !== undefined && (typeof state.lastEmptyTurnAt !== "number" || !Number.isFinite(state.lastEmptyTurnAt) || state.lastEmptyTurnAt < 0)) return null

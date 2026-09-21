@@ -19,9 +19,17 @@ async function waitFor(predicate, timeoutMs = 1000) {
   assert.fail("condition was not met before timeout")
 }
 
+async function waitForDispatchCleanup(root) {
+  const deadline = Date.now() + 5000
+  while ((await readOnlyGoal(root)).dispatchLease) {
+    assert.ok(Date.now() < deadline, "dispatch lease cleanup must finish")
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+
 async function readOnlyGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -119,7 +127,7 @@ test("command-owned chat message does not pause its own goal", async () => {
     assert.equal(goal.status, "active")
     assert.deepEqual(goal.execution, { agent: "build", model: { providerID: "p", modelID: "m" }, variant: "high" })
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -192,9 +200,9 @@ test("human message steers active goal, preempts a queued continuation, and keep
     await tick()
     assert.equal(fake.promptCount, 2, "Goal auto-continue resumes after the steering turn finishes")
     fake.pending[1].resolve({})
-    await tick()
+    await waitForDispatchCleanup(root)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -217,9 +225,9 @@ test("duplicate idle while prompt is pending does not dispatch concurrently", as
     await waitFor(() => fake.promptCount === 2)
     assert.equal(fake.promptCount, 2, "deferred idle is replayed only after the first dispatch settles")
     fake.pending[1].resolve({})
-    await tick()
+    await waitForDispatchCleanup(root)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -243,7 +251,7 @@ test("revision-owned PatchPart remains a fallback host-progress signal", async (
     const duplicate = await readOnlyGoal(root)
     assert.equal(duplicate.progressRevision, changed.progressRevision, "duplicate patch delivery must not double-count progress")
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -292,7 +300,7 @@ test("goal edit aborts the old turn, suppresses abort-idle, and rejects stale re
     )
     assert.match(currentProgress, /Checkpoint recorded/)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -344,7 +352,7 @@ test("non-goal assistant messages do not consume goal budget", async () => {
     assert.equal(afterHumanTurn.usage.turns, 1)
     assert.equal(afterHumanTurn.usage.cost, afterGoalTurn.usage.cost)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })
 
@@ -362,6 +370,6 @@ test("active goal owns compaction context and generic auto-continue", async () =
     await hooks["experimental.compaction.autocontinue"]({ sessionID: "session-1" }, auto)
     assert.equal(auto.enabled, false)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   }
 })

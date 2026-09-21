@@ -1,400 +1,228 @@
-# OpenCode Goals
+# OpenCode Relentless
 
-**Language:** **English** · [Türkçe](./README.tr.md)
+### Persistent goals, automatic recovery, and completion checks for OpenCode
 
-[![npm version](https://img.shields.io/npm/v/%40bybrawe%2Fopencode-goal)](https://www.npmjs.com/package/@bybrawe/opencode-goal)
-[![npm downloads](https://img.shields.io/npm/dm/%40bybrawe%2Fopencode-goal)](https://www.npmjs.com/package/@bybrawe/opencode-goal)
-[![license](https://img.shields.io/npm/l/%40bybrawe%2Fopencode-goal)](./LICENSE)
+Relentless adds a persistent `/goal` workflow to your OpenCode coding agent. Describe the result you want, specify how to check it, and let the agent work across multiple turns. If an attempt fails or the provider disconnects, the plugin saves recovery state and schedules another eligible attempt.
 
-**Persistent, host-verified Goal mode for OpenCode.**
+**You decide the objective. The plugin tracks pursuit. Completion requires evidence.**
 
-OpenCode Goals is an **OpenCode goal plugin** for long-running AI coding tasks. It adds a durable `/goal` workflow so an OpenCode coding agent can keep one explicit objective across multiple turns, context compaction, interruptions, delegated work, and process restarts — while completion remains gated by current host evidence instead of the executor simply saying “done”.
+[![CI](https://github.com/darkmatter2222/opencode-goal/actions/workflows/ci.yml/badge.svg?branch=feat%2Frelentless)](https://github.com/darkmatter2222/opencode-goal/actions/workflows/ci.yml)
+[![Release checks](https://github.com/darkmatter2222/opencode-goal/actions/workflows/release-readiness.yml/badge.svg?branch=feat%2Frelentless)](https://github.com/darkmatter2222/opencode-goal/actions/workflows/release-readiness.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-If you are looking for an **OpenCode autonomous agent**, **persistent goal mode**, **multi-turn coding agent**, **Codex-style long-running goal workflow for OpenCode**, or an OpenCode plugin with **independent completion verification**, this package is built for that use case.
+[Install](#install) · [Use it](#your-first-goal) · [Commands](#find-the-right-command) · [Recovery](#when-work-gets-interrupted) · [Documentation](#documentation)
 
-> Independent OpenCode plugin. “Codex-style” describes the long-running goal workflow pattern only; no endorsement or feature-parity claim is implied.
+> **About this repository:** `darkmatter2222/opencode-goal` is a fork of ByBrawe's Goal plugin. The Relentless implementation described here is on **`feat/relentless`**, under review in [PR #1](https://github.com/darkmatter2222/opencode-goal/pull/1). Its package identity is **`@darkmatter2222/opencode-relentless`**, version **`2.0.0-beta.1`**. Use the source installation below for this development beta.
 
-## Install or update
+## Install
 
-Recommended one-command install:
+You need Node.js **20+**, Git, and OpenCode with a working model/provider configuration. The package declares OpenCode **1.4.0+** and plugin API **1.4.0–1.x** compatibility. Menu support depends on your host's TUI API.
 
-```bash
-npx -y @bybrawe/opencode-goal@latest
+**1. Clone and build.** Run in your terminal, using Bash or PowerShell:
+
+```sh
+git clone --branch feat/relentless https://github.com/darkmatter2222/opencode-goal.git
+cd opencode-goal
+npm ci
+npm run build
+node -e "console.log(require('node:url').pathToFileURL(process.cwd()).href)"
 ```
 
-Run the same command again whenever you want to update.
+**2. Register the plugin.** Copy the URL printed by the last command into the `plugin` array in your OpenCode configuration, such as `~/.config/opencode/opencode.json`:
 
-Or install the installer globally:
-
-```bash
-npm install -g @bybrawe/opencode-goal@latest
-opencode-goal
+```json
+{
+  "plugin": ["file:///absolute/path/to/opencode-goal"]
+}
 ```
 
-Then **fully restart OpenCode** and verify:
+Use your generated URL, not the placeholder. On Windows it will look like `file:///C:/src/opencode-goal`. Keep your other settings and plugins. If you already use `@bybrawe/opencode-goal`, replace that entry: both plugins own `/goal` and must not be loaded together.
+
+**3. Restart OpenCode completely.** Open the project you want the agent to work on, then enter:
 
 ```text
-/goal status
+/goal help
+/goal doctor
 ```
 
-You should also see `/goal` in OpenCode's slash-command list.
+The first command explains usage; the second checks storage integrity and recovery configuration. Relentless uses your OpenCode provider setup, including a local model if that setup supports the required tools and verifier requests. It does not install a model or supply credentials.
 
-`npm install @bybrawe/opencode-goal` by itself only installs a Node package into the current project. It does **not** register the plugin in OpenCode. Use the `npx` installer above or the global installer command.
+[More installation help, updates, and rollback →](docs/guides/INSTALLATION.md)
 
-### What the installer does
+## Your first goal
 
-The installer:
-
-- finds the global OpenCode config directory;
-- creates a config if none exists;
-- installs/pins `@bybrawe/opencode-goal@<exact-version>` in the OpenCode plugin list;
-- upgrades old, bare, or `@latest` Goal plugin entries;
-- removes known duplicate legacy local Goal plugin copies;
-- installs a managed global `commands/goal.md` so `/goal` is discoverable;
-- preserves unrelated OpenCode settings and JSONC comments outside the managed plugin array.
-
-Default OpenCode locations:
-
-macOS / Linux:
+The simplest form is an objective in plain language:
 
 ```text
-~/.config/opencode/opencode.json or opencode.jsonc
-~/.config/opencode/commands/goal.md
+/goal Explain how authentication works in this project
 ```
 
-Windows:
+For code changes, add a concrete completion check. In a project with an `npm test` script:
 
 ```text
-%USERPROFILE%\.config\opencode\opencode.json or opencode.jsonc
-%USERPROFILE%\.config\opencode\commands\goal.md
+/goal new Fix the login redirect loop --check "npm test"
 ```
 
-OpenCode loads the npm package through its dedicated `./server` entrypoint. The root export remains the public JavaScript API.
+The agent works toward the objective. When it attempts completion, the plugin runs required checks and evaluates the evidence. A failed or missing requirement keeps the goal unverified.
 
-## Why use OpenCode Goals?
+Use these controls as you work:
 
-Normal coding-agent conversations can lose the original outcome after many turns, compaction, retries, or interruptions. OpenCode Goals keeps the success boundary explicit and persistent.
-
-Key capabilities:
-
-- **Persistent goals across turns** — the objective remains active across autonomous continuations.
-- **Long-running agent workflow** — OpenCode can continue Goal-owned work after idle boundaries.
-- **Host-verified completion** — shell checks, file contracts, mutation evidence, and current workspace state can be verified by the plugin.
-- **Independent semantic verifier** — the executor does not get to mark itself successful just because it says the work is done.
-- **False-completion protection** — missing, stale, indirect, or invented evidence fails closed.
-- **Multi-turn cadence protection** — objectives such as “do exactly +1 for 10 separate turns” are not proven by a final file value alone.
-- **Restart recovery** — project-local state survives OpenCode/process restarts.
-- **Compaction persistence** — Goal context is preserved while OpenCode manages its own model context window. See the [compaction & continuation contract](./docs/COMPACTION-CONTINUATION.md) for active auto/manual compaction ownership and paused-resume semantics.
-- **Budgets** — turn, token, runtime, and optional cost limits keep autonomous work bounded.
-- **Goal queues** — keep one live Goal while preparing future Goals in an inert ordered queue.
-- **Windows / macOS / Linux packaging** — installer and package smoke coverage is cross-platform.
-
-## Quick start
-
-Start a Goal with a real verification command:
-
-```text
-/goal fix the failing tests --check "npm test"
-```
-
-Create a broader Goal Contract:
-
-```text
-/goal refactor auth \
-  --success "all auth tests pass" \
-  --success "existing callers remain compatible" \
-  --constraint "do not add a runtime dependency" \
-  --non-goal "do not redesign unrelated session code" \
-  --check "npm test"
-```
-
-Inspect the live contract and proof state:
-
-```text
-/goal status
-/goal contract
-/goal audit
-```
-
-Pause and resume:
-
-```text
-/goal pause
-/goal resume
-```
-
-When a Goal is paused, a short explicit continuation message such as `devam et`, `continue`, or `resume` also resumes it through the same lifecycle control chain. Other normal chat does not silently reactivate a paused Goal.
-
-Queue future Goals:
-
-```text
-/goal add update docs --success "docs match shipped behavior"
-/goal add prepare release notes --check "npm test"
-/goal queue
-```
-
-## Common use cases
-
-OpenCode Goals is useful when an AI coding agent needs to persist until a real outcome is reached, for example:
-
-- fixing a failing test suite across many iterations;
-- carrying a refactor or migration across multiple model turns;
-- enforcing “N distinct turns/cycles” or other temporal work requirements;
-- preserving an objective through context compaction;
-- recovering unfinished work after closing and reopening OpenCode;
-- preventing premature “done” claims during autonomous coding;
-- requiring file evidence, shell checks, or semantic verification before completion;
-- running independent Goals in separate OpenCode sessions while keeping their Goal state isolated.
-
-## Core commands
-
-| Command | Purpose |
+| During the task | Enter |
 |---|---|
-| `/goal <objective>` | Start a Goal when no unfinished live Goal blocks creation |
-| `/goal status` | Show current Goal state |
-| `/goal contract` | Show objective, criteria, constraints, checks, files, and limits |
-| `/goal audit` | Inspect proof/evidence and the current completion gate |
-| `/goal edit <objective>` | Create a new revision of the current Goal |
-| `/goal pause` | Pause autonomous Goal continuation |
-| `/goal resume` | Explicitly reactivate an eligible paused Goal |
-| `/goal budget` | Inspect/change local execution limits |
-| `/goal list` | Read-only project-wide live Goal index |
-| `/goal doctor` | Diagnose live/archive/queue storage without rewriting it |
-| `/goal add <objective>` | Queue a future inert Goal Contract |
-| `/goal queue` | Inspect/reorder/remove queued Goals |
-| `/goal next` | Promote the next Goal when no unfinished live Goal blocks it |
-| `/goal history` | Inspect archived Goals |
-| `/goal restore <id>` | Restore an unfinished archived Goal as paused |
-| `/goal clear` | Clear/archive the current live Goal |
+| See the goal's state and recovery timing | `/goal status` |
+| Understand why it is waiting | `/goal why` |
+| Inspect the exact objective and requirements | `/goal contract` |
+| Read recorded verification evidence | `/goal proof` |
+| Pause autonomous pursuit and keep the goal | `/goal pause` |
+| Enable a saved goal again | `/goal resume` |
+| Cancel pursuit and archive the goal | `/goal stop` |
 
-## Can I start a second Goal?
+Pause and stop preserve project edits; they are not rollback commands. Running tools may take time to cancel. A new goal cannot silently replace an unfinished one.
 
-A single OpenCode **session has at most one unfinished live Goal**. This avoids two autonomous controllers competing inside the same session.
+## Make “done” specific
 
-If a Goal is already active or paused:
-
-- use `/goal edit <objective>` when you mean to revise the current Goal;
-- use `/goal add <objective>` to queue a second Goal for later;
-- use `/goal clear` if you intentionally want to abandon/archive the current Goal and start a different one;
-- use a **separate OpenCode session** when you intentionally want two Goals to run in parallel.
-
-For queued Goals:
+A good goal describes an observable result and supplies checks appropriate to the project.
 
 ```text
-/goal add second objective
+/goal new Fix expired-token handling --accept "Expired tokens return HTTP 401" --constraint "Keep the public response schema unchanged" --check "npm test"
+```
+
+| Option | What it adds | Example |
+|---|---|---|
+| `--accept` | An acceptance criterion for semantic review | `--accept "Empty input returns a clear error"` |
+| `--constraint` | A boundary the solution must respect | `--constraint "Do not change the public API"` |
+| `--check` | A command that must exit successfully | `--check "python -m pytest"` |
+| `--file` | A file that must exist | `--file docs/setup.md` |
+| `--contains` | Required text within a file | `--contains "docs/setup.md::Troubleshooting"` |
+
+Quote values containing spaces. Repeat these options for multiple requirements. Use commands and paths that actually exist in your project.
+
+**Refactor with two checks:**
+
+```text
+/goal new Remove duplicate retry logic --constraint "Preserve retry counts and timeout behavior" --check "npm test" --check "npm run build"
+```
+
+**Create a contributor guide:**
+
+```text
+/goal new Write a local setup guide for new contributors --file docs/setup.md --contains "docs/setup.md::Troubleshooting"
+```
+
+**Revise an existing goal:**
+
+```text
+/goal edit Fix expired-token handling and add regression coverage
+/goal contract
+```
+
+Editing preserves unspecified checks, constraints, and acceptance criteria. Supplying a group replaces that group; completion evidence must satisfy the revised goal.
+
+**Use literal text:**
+
+```text
+/goal-new -- Document the application's --help output
+```
+
+Everything after `--` is objective text. To use verification flags, put them in a normal `/goal new …` command instead. [Full syntax and multiline behavior →](docs/guides/COMMANDS.md)
+
+## Find the right command
+
+You should not need to memorize the command reference:
+
+- **`/goal`** shows usage.
+- **`/goal help edit`** explains one action with an example.
+- **Type `/goal-`** to discover separate shortcuts, such as `/goal-status` and `/goal-pause`.
+- **`/goal-menu`** opens a searchable picker on compatible TUI hosts. It inserts a command for review before you submit it.
+
+There are 20 catalog commands. The remaining controls cover inspection and longer workflows:
+
+| Task | Command |
+|---|---|
+| Inspect recent progress notes | `/goal attempts` |
+| Check whether this session's recovery is due | `/goal retry` |
+| Show or adjust resource limits | `/goal budget` |
+| Queue another objective | `/goal add <objective>` |
+| Inspect the queue | `/goal queue` |
+| Activate the next eligible queued goal | `/goal next` |
+| Inspect archived goals | `/goal history` |
+| Restore an unfinished archive as paused | `/goal restore <goal-id>` |
+| Inspect saved goals across project sessions | `/goal list` |
+| Diagnose storage and recovery | `/goal doctor` |
+
+Existing user-defined shortcuts are preserved; use `/goal <action>` when an alias is already taken. Nested argument autocomplete is not supported on every host.
+
+[All commands, shortcuts, and examples →](docs/guides/COMMANDS.md)
+
+## Queue work and set limits
+
+Add a follow-up without replacing your current goal:
+
+```text
+/goal add Document the behavior changed by the current fix --file docs/behavior.md
 /goal queue
-/goal next
 ```
 
-`/goal next` promotes the next queued Goal only when no unfinished live Goal blocks promotion.
+Queue activation requires the current goal to be completed or absent and the execution context to permit it. `/goal next` does not discard unfinished work or create concurrent goals.
 
-Separate sessions have separate persisted Goal snapshots. They can therefore run distinct Goals in the same project directory, although normal workspace conflicts are still possible if both sessions edit the same project files.
-
-## Pause vs. normal chat: explicit continuation and arbitrary chat
-
-`/goal pause` changes persisted Goal state to `paused`. `/goal resume` remains the explicit lifecycle command for reactivating it.
-
-For convenience, a narrow set of short, unambiguous continuation messages — for example `devam et`, `continue`, `kaldığın yerden devam et`, or `resume` — is treated as resume intent while a Goal is paused. The plugin routes that intent through the same `/goal resume` command/ownership chain rather than directly rewriting Goal state.
-
-Other foreground chat stays ordinary conversation and does **not** silently reactivate the Goal. This keeps arbitrary chat from becoming lifecycle control while letting a clear “continue” instruction do what the user expects.
-
-The same resume path can be used after a fail-closed verifier outage. A timeout-class verifier failure first receives one fresh bounded automatic retry; if that retry also fails and the Goal is persisted as `paused`, wait until the verifier/provider is usable and then use `/goal resume` or a short explicit continuation message to retry completion.
-
-## Goal Contracts
-
-Repeatable contract flags define success and hard boundaries:
+New goals have unlimited plugin budgets by default (`0`). Set an explicit limit when you want one:
 
 ```text
---success "..."
---accept "..."
---constraint "..."
---non-goal "..."
---check "..."
---contains "file::required text"
---max-turns <n>
---max-tokens <n>
---max-minutes <n>
---max-cost <amount>
+/goal budget --max-turns 30
 ```
 
-New Goals have no cumulative token cap by default (`maxTokens: 0`). Use `--max-tokens` or `/goal budget --max-tokens` only when you want an explicit total-work runaway guard; this cumulative budget is separate from the selected model's current context/input window.
+A reached limit stops autonomous pursuit without declaring success. Inspect `/goal budget`, then deliberately increase or remove the limit to allow more work. Other options include `--max-tokens`, `--max-minutes`, and `--max-cost`; cost accuracy depends on host telemetry.
 
-The full objective always remains a required semantic requirement. Narrow checks add proof obligations; they never replace the broader outcome.
+## When work gets interrupted
 
-`/goal edit` creates a new revision. Evidence from an older revision cannot silently prove the edited Goal.
+| Situation | Implemented behavior |
+|---|---|
+| No progress, empty responses, or repeated blockers | New persistent goals schedule another attempt instead of treating the failed attempt as completion. |
+| Recoverable provider or transport failure | Recovery uses saved deadlines and exponential backoff with jitter. |
+| Provider asks the client to wait | Supported provider cooldowns survive resume, edit, and later recovery observations. |
+| An idle event is missed | A periodic scanner checks eligible saved goals against host status. |
+| OpenCode restarts | Saved eligible goals can recover when the host and execution context are available. |
+| You pause or stop | Explicit controls take priority over autonomous pursuit. |
 
-## Multi-turn cadence and anti-batching
+`active` can mean **waiting for recovery**, not currently generating tokens. `/goal why` explains the next action. `/goal retry` respects deadlines and busy sessions; it does not bypass a cooldown or resume a paused goal. Repeated `/goal resume` on an already-active goal does not start a duplicate request.
 
-OpenCode Goals is designed for objectives that explicitly require work across multiple distinct turns or cycles.
+For process supervision, the repository also includes `bin/opencode-relentless-runner.js`. It runs an authenticated loopback OpenCode host and restarts that host after failures. Configure its password, attach to that same server, and use an OS service manager if you need operation across logout or reboot. [Runner setup and operations →](docs/guides/OPERATIONS.md)
 
-Example:
+### What persistence does—and does not—mean
 
-```text
-/goal 10 ayrı goal turunda counter.json içindeki value değerini her tur tam +1 artır. Başlangıç 0, final 10. Tek seferde +10 yapma.
+Goals are saved; execution still needs a running host, usable storage, provider access, and permissions. The plugin cannot work while the machine is off. Existing upstream goals retain their prior policy rather than being silently converted or resumed.
+
+Completion checks improve confidence, but semantic review remains fallible. Supported exact integer equations use deterministic arithmetic, so `1 + 1 = 3` stays unverified. Local state and executable tests are not immutable external proof, and dispatch leases do not guarantee exactly-once external actions.
+
+[Recovery rules and verification limits →](docs/guides/RELIABILITY.md) · [Troubleshooting →](docs/guides/TROUBLESHOOTING.md)
+
+## Documentation
+
+| Guide | Covers |
+|---|---|
+| [Installation](docs/guides/INSTALLATION.md) | Setup, migration, updates, Windows paths, rollback |
+| [Commands](docs/guides/COMMANDS.md) | Complete syntax, help, queues, history, budgets |
+| [Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Symptoms, diagnosis, and recovery actions |
+| [Reliability](docs/guides/RELIABILITY.md) | Retry scheduling, verification, and limitations |
+| [Operations](docs/guides/OPERATIONS.md) | Host supervision, configuration, state, backups |
+| [Architecture](docs/guides/ARCHITECTURE.md) | Execution flow, module map, concurrency |
+| [Roadmap](docs/guides/ROADMAP.md) | Proposed improvements, clearly separated from shipped behavior |
+
+[Documentation index](docs/README.md) · [Changelog](CHANGELOG.md) · [Türkçe](README.tr.md)
+
+## Contribute
+
+The plugin is written in TypeScript. From the repository checkout:
+
+```sh
+npm ci
+npm run release:check
 ```
 
-For this kind of objective, the plugin tracks host-observed workspace mutation fingerprints and Goal progress across the current revision. A model should perform the requested per-turn unit and end its turn instead of collapsing the work into one batch.
+The release check runs type checking, tests, adversarial evaluations, documentation validation, and packed-package installation checks. For documentation-only edits, run `npm run docs:check`. GitHub Actions adds platform, compatibility, and real-host coverage; use the live workflow results rather than historical test counts.
 
-A final `{"value":10}` alone does not prove that ten distinct +1 turns occurred.
-
-## Native OpenCode Todo orchestration
-
-For broad multi-step work, OpenCode Goals coordinates with OpenCode's native Todo planning without treating Todo state as Goal proof.
-
-The boundary is strict:
-
-- Todo text/status never becomes Goal evidence;
-- Todo completion never increments Goal progress by itself;
-- Todo cannot widen the user-authorized Goal scope;
-- a current Todo plan with `pending` or `in_progress` work vetoes completion;
-- a fully completed Todo plan still does **not** prove the Goal;
-- missing or stale Todo telemetry cannot block a newer Goal revision.
-
-## Completion integrity
-
-Completion is an audit pipeline:
-
-1. configured shell checks run on the host and their actual result/output digest is recorded;
-2. declared file contracts are re-read by the plugin inside the project boundary;
-3. semantic requirements are sent to a separate read-only verifier session;
-4. verifier citations are checked against current files/evidence;
-5. host-observed current-revision turn/progress facts are available for temporal requirements;
-6. stale, invented, indirect, or failing evidence is rejected;
-7. current native Todo work is rechecked;
-8. every required ledger item must be proven before `completed` is persisted.
-
-If verification is unavailable, incomplete, stale, ambiguous, or races with a lifecycle change, completion **fails closed**.
-
-### Verifier timeout / bounded retry / Goal stays paused
-
-If the executor has finished the work but independent semantic verification hits a timeout-class infrastructure failure, the plugin aborts and cleans up that verifier child and automatically retries **once** in a fresh verifier session. The retry is capped at 60 seconds, or at the configured verifier timeout when that is lower. There is no third automatic verifier attempt.
-
-Non-timeout provider or transport failures are not automatically retried. If the bounded timeout retry also fails, the Goal is persisted as `paused` instead of entering an endless completion retry loop. Existing host evidence remains persisted.
-
-When the verifier/provider is healthy again:
-
-```text
-/goal resume
-```
-
-A short explicit continuation message such as `continue` or `devam et` uses the same resume path.
-
-A verifier outage never marks an unproven Goal completed.
-
-## Persistence and restart recovery
-
-Project-local state:
-
-```text
-.opencode/goals/
-.opencode/goal-sequences/
-.opencode/goal-locks/
-```
-
-The runtime includes atomic writes, optimistic generation/CAS protection, per-session ownership, process leases, path/symlink escape protection, corrupt-state fail-closed handling, and process-restart recovery.
-
-Goal cumulative token/runtime budgets are intentionally separate from the selected model's current context window. `/goal status` reports the host-observed full context pressure and, when the model exposes a smaller input limit, input-side pressure separately. OpenCode remains responsible for deciding when to compact.
-
-While an active Goal owns a session, the plugin keeps OpenCode's generic post-compaction synthetic continue disabled and resumes through exactly one Goal-owned guarded continuation path instead, so compaction does not require a manual `continue` and does not create two competing continuation owners.
-
-## Troubleshooting
-
-### `/goal` is missing or the command bridge reaches the model
-
-Reinstall/update:
-
-```bash
-npx -y @bybrawe/opencode-goal@latest
-```
-
-Then:
-
-1. confirm the installer reports an exact package pin and a managed `/goal` command;
-2. confirm `commands/goal.md` exists in the global OpenCode config directory;
-3. fully close every OpenCode CLI/TUI/Desktop process and reopen it;
-4. do not start OpenCode with `--pure`, which disables external plugins;
-5. inspect OpenCode config diagnostics for plugin-load errors.
-
-The installer does **not** overwrite a user-owned `commands/goal.md`.
-
-### Goal is paused after completion work finished
-
-Check:
-
-```text
-/goal status
-/goal audit
-```
-
-If the stop reason is verifier infrastructure/timeout after the bounded automatic retry and the workspace is already correct, do not manually repeat the requested mutations. Use `/goal resume` or a short explicit continuation message to retry the completion path.
-
-### I cannot start another Goal in the same session
-
-That session already has an unfinished live Goal. Choose one:
-
-```text
-/goal edit <replacement objective>
-/goal add <future objective>
-/goal clear
-```
-
-Or open a second OpenCode session for parallel work.
-
-## Using OpenCode Goals with OpenCode Loop
-
-Both plugins can be installed together:
-
-```bash
-npx -y @bybrawe/opencode-loop@latest
-npx -y @bybrawe/opencode-goal@latest
-```
-
-Recommended split:
-
-- **OpenCode Goals** — persistent `/goal` contracts, host evidence, completion verification, false-completion protection, revision isolation, restart recovery, and ordered Goals.
-- **OpenCode Loop** — `/loop`, scheduled command/shell jobs, compaction scheduling, and timer/idle-driven repetition infrastructure.
-
-Do **not** run `/goal` and Loop's experimental `/loop-goal` against the same work in the same OpenCode session. Both can autonomously continue and may compete to start turns.
-
-Also avoid leaving a prompt-producing `/loop ...` job continuously injecting turns while an active `/goal` is autonomously continuing. Use separate sessions or pause/remove that prompt loop until the Goal is done.
-
-## Package and release quality
-
-npm package:
-
-```text
-@bybrawe/opencode-goal
-```
-
-The repository includes deterministic regression tests, adversarial evals, minimum/current OpenCode compatibility lanes, real-host lifecycle/semantic/Todo/steering canaries, restart recovery tests, cross-platform package smoke tests, dedicated server-entry regression coverage, and installer/update/uninstall tests.
-
-See [CHANGELOG.md](./CHANGELOG.md) for release history and [RELEASING.md](./RELEASING.md) for the release process.
-
-## Uninstall
-
-If installed/updated with `npx`:
-
-```bash
-npx -y @bybrawe/opencode-goal@latest --uninstall
-```
-
-If the installer CLI is global:
-
-```bash
-opencode-goal --uninstall
-npm uninstall -g @bybrawe/opencode-goal
-```
-
-Project Goal state is intentionally **not deleted** during uninstall:
-
-```text
-.opencode/goals/
-.opencode/goal-sequences/
-.opencode/goal-locks/
-```
-
-Delete those directories yourself only when you intentionally want to erase project-local Goal state/history.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow. Report bugs in [GitHub Issues](https://github.com/darkmatter2222/opencode-goal/issues), with reproduction steps and relevant diagnostics. Follow [SECURITY.md](SECURITY.md) for sensitive reports.
 
 ## License
 
-MIT
+[MIT](LICENSE). Based on [ByBrawe/opencode-goal](https://github.com/ByBrawe/opencode-goal), with upstream attribution and history preserved. OpenCode Relentless is an independent community plugin.

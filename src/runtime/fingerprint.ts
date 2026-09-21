@@ -77,7 +77,7 @@ function runtimeBuildIdentity(): string | undefined {
 }
 
 function currentFingerprint(): GoalRuntimeFingerprint {
-  const goalVersion = packageVersionFromManifest(path.join(packageRoot, "package.json"), "@bybrawe/opencode-goal") ?? "unknown"
+  const goalVersion = packageVersionFromManifest(path.join(packageRoot, "package.json"), "@darkmatter2222/opencode-relentless") ?? "unknown"
   const goalBuild = cleanIdentity(process.env.OPENCODE_GOAL_BUILD_SHA)
     ? `git:${cleanIdentity(process.env.OPENCODE_GOAL_BUILD_SHA)}`
     : runtimeBuildIdentity()

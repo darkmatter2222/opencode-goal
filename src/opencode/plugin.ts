@@ -1,3 +1,10 @@
+import { retryAfterDeadline } from "../runtime/retry-after.js"
+import { shellGitWorkspaceMarker } from "./shell-progress.js"
+import { verifyArithmeticObjective } from "../verification/arithmetic.js"
+import { randomUUID } from "node:crypto"
+import { withDeadline, sdkResult } from "../runtime/deadline.js"
+import { recoverPersistentGoal } from "../runtime/persistence-policy.js"
+import { retainEvidenceRecords } from "../verification/retention.js"
 import { tool } from "@opencode-ai/plugin/tool"
 import { createGoal, editGoal, pauseGoal, resumeGoal, waitForUserGoal } from "../domain/goal.js"
 import type { GoalExecutionContext, GoalState } from "../domain/types.js"
@@ -21,11 +28,22 @@ import { compactionContext, continuationPrompt } from "./prompt.js"
 import { createSemanticVerifierRuntime, SemanticVerifierUnavailableError } from "./verifier.js"
 import { showGoalToast } from "./toast.js"
 
+function leaseOwnerAlive(owner: string): boolean {
+  const pid = Number(owner.split(":")[0])
+  if (!Number.isInteger(pid) || pid <= 0) return true
+  try { process.kill(pid, 0); return true }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH" }
+}
+
 const FILE_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch"])
 const TODO_TOOL = "todowrite"
 const SHELL_TOOL = "bash"
 
 export interface OpenCodeGoalPluginOptions {
+  /** Public plugin enables persistence; false retains upstream bounded policy. */
+  persistent?: boolean
+  /** Deadline for one prompt request; unknown outcomes are reconciled via host status. */
+  dispatchTimeoutMs?: number
   /** Dedicated semantic verifier model in provider/model format. */
   verifierModel?: string
   /** Hard semantic verifier deadline in milliseconds. */
@@ -53,13 +71,13 @@ async function sdkPrompt(client: any, sessionID: string, text: string, execution
     ...(execution?.model ? { model: execution.model } : {}),
     ...(execution?.variant ? { variant: execution.variant } : {}),
   }
-  return await client.session.prompt({ path: { id: sessionID }, body })
+  return sdkResult(await client.session.prompt({ path: { id: sessionID }, body }))
 }
 
 async function sdkAbort(client: any, sessionID: string): Promise<boolean> {
   if (!client.session.abort) return false
   try {
-    await client.session.abort({ path: { id: sessionID } })
+    sdkResult(await withDeadline(client.session.abort({ path: { id: sessionID } }), 5_000, "Goal abort"))
     return true
   } catch {
     return false
@@ -79,6 +97,8 @@ function optionNumber(value: unknown): number | undefined {
 
 export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGoalPluginOptions = {}) {
   const { client, directory } = input
+  const instanceID = `${process.pid}:${randomUUID()}`
+  const dispatchTimeout = optionNumber(options.dispatchTimeoutMs) ?? 30 * 60_000
   const store = new GoalStore(directory)
   const semanticVerifier = createSemanticVerifierRuntime(client, directory, {
     model: optionText(options.verifierModel) ?? optionText(process.env.OPENCODE_GOAL_VERIFIER_MODEL),
@@ -127,7 +147,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
     return {
       ...latest,
       requirements: evaluated.requirements,
-      evidence: [...latest.evidence, ...evaluated.evidence.filter((item) => !latestEvidenceIDs.has(item.id))].slice(-500),
+      evidence: retainEvidenceRecords(evaluated, [...latest.evidence, ...evaluated.evidence.filter((item) => !latestEvidenceIDs.has(item.id))]),
       progressRevision: Math.max(latest.progressRevision, evaluated.progressRevision),
       updatedAt: Date.now(),
     }
@@ -218,9 +238,15 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
       }
       let goal = await load(sessionID)
       if (!goal || goal.status !== "active") return null
+      if (goal.persistent && (Math.max(goal.infrastructureRecovery?.nextRetryAt ?? 0, goal.providerRetryAt ?? 0) > Date.now())) return null
+      if (goal.dispatchLease && goal.dispatchLease.owner !== instanceID && goal.dispatchLease.expiresAt > Date.now() && leaseOwnerAlive(goal.dispatchLease.owner)) return null
       goal = closeObservedTurn(goal)
       await save(goal)
-      if (goal.status !== "active") return null
+      if (goal.status !== "active" || Math.max(goal.infrastructureRecovery?.nextRetryAt ?? 0, goal.providerRetryAt ?? 0) > Date.now()) return null
+      if (goal.persistent) {
+        goal = { ...goal, nextWakeAt: Date.now() + 15_000, dispatchLease: { owner: instanceID, expiresAt: Date.now() + dispatchTimeout } }
+        await save(goal)
+      }
       resetCadenceTurn(sessionID)
       const token = Date.now() + Math.random()
       const text = continuationPrompt(goal)
@@ -233,19 +259,28 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
   async function continueIfActive(sessionID: string) {
     const prepared = await prepareContinuation(sessionID)
     if (!prepared) return
-    void sdkPrompt(client, sessionID, prepared.text, prepared.goal.execution)
+    void withDeadline(sdkPrompt(client, sessionID, prepared.text, prepared.goal.execution), dispatchTimeout, "Goal continuation")
       .catch(async (error) => {
         await serialize(sessionID, async () => {
           const latest = await load(sessionID)
           if (latest?.status === "active" && dispatching.get(sessionID) === prepared.token) {
-            await save(pauseGoal(latest, `Continuation dispatch failed: ${String(error)}`))
+            await save(latest.persistent ? recoverPersistentGoal(latest, `Continuation dispatch failed: ${String(error)}`, Date.now(), "continuation_dispatch", retryAfterDeadline(error)) : pauseGoal(latest, `Continuation dispatch failed: ${String(error)}`))
           }
         })
       })
-      .finally(() => {
+      .finally(async () => {
+        try {
+          await serialize(sessionID, async () => {
+            const latest = await load(sessionID)
+            if (latest?.dispatchLease?.owner === instanceID && dispatching.get(sessionID) === prepared.token) {
+              const { dispatchLease: _lease, ...rest } = latest
+              await save(rest)
+            }
+          })
+        } catch { /* Reconciler retries; a lease expires even if cleanup fails. */ }
         if (dispatching.get(sessionID) === prepared.token) dispatching.delete(sessionID)
-        if (deferredIdle.delete(sessionID)) queueMicrotask(() => { void continueIfActive(sessionID) })
-      })
+        if (deferredIdle.delete(sessionID)) queueMicrotask(() => { void continueIfActive(sessionID).catch(() => undefined) })
+      }).catch(() => undefined)
   }
 
   function markCommandOutputOwned(sessionID: string, output: any, text: string, goal?: GoalState) {
@@ -285,9 +320,17 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           return
         }
         if (parsed.action === "resume") {
+          if (!goal || (goal.status === "active" && event.__goalActivation !== true) || goal.status === "completed") {
+            output.noReply = true
+            markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nResume did not start another request.`)
+            return
+          }
           resetCadenceTurn(event.sessionID)
           if (goal) goal = await save(resumeGoal(goal))
-          markCommandOutputOwned(event.sessionID, output, goal ? continuationPrompt(goal) : "No goal exists. Respond only with that fact.", goal ?? undefined)
+          if (goal && Math.max(goal.providerRetryAt ?? 0, goal.infrastructureRecovery?.nextRetryAt ?? 0) > Date.now()) {
+            output.noReply = true
+            markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nGoal enabled. The saved retry deadline is preserved; recovery will continue automatically.`)
+          } else markCommandOutputOwned(event.sessionID, output, goal ? continuationPrompt(goal) : "No goal exists. Respond only with that fact.", goal ?? undefined)
           return
         }
         if (parsed.action === "clear") {
@@ -318,6 +361,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           if (goal && goal.status !== "completed") throw new Error("An unfinished goal already exists. Use /goal edit, /goal clear, or complete it first.")
           goal = createGoal({
             sessionID: event.sessionID,
+            persistent: options.persistent === true,
             objective: parsed.objective,
             acceptance: parsed.acceptance,
             checks: parsed.checks,
@@ -332,7 +376,10 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           })
         }
         await save(goal)
-        markCommandOutputOwned(event.sessionID, output, continuationPrompt(goal), goal)
+        if ((goal.providerRetryAt ?? 0) > Date.now()) {
+          output.noReply = true
+          markCommandOutputOwned(event.sessionID, output, `${formatStatus(goal)}\nGoal updated. Provider cooldown remains in effect; recovery will continue automatically.`)
+        } else markCommandOutputOwned(event.sessionID, output, continuationPrompt(goal), goal)
       })
       if (abortControl === "edit") await abortGoalTurn(event.sessionID, true)
       else if (abortControl === "pause") await abortGoalTurn(event.sessionID, false)
@@ -534,7 +581,11 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
                 next = recordEmptyAssistantTurn(goal, sample)
                 emptyNotice = { count: next.emptyTurnCount ?? 0, paused: next.status === "paused" }
               } else {
-                next = accountAssistantUsage(goal, sample)
+                // Tool rounds are billable messages inside one host prompt, not
+                // distinct Goal turns. Match OpenCode's terminal finish boundary.
+                next = accountAssistantUsage(goal, sample, Date.now(), {
+                  countTurn: !["tool-calls", "unknown"].includes(info.finish),
+                })
                 if (meaningful && currentRevision) next = clearEmptyAssistantTurnStreak(next)
               }
               next = observeModelContextUsage(next, info.tokens)
@@ -543,7 +594,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
             if (emptyNotice) {
               const message = emptyNotice.paused
                 ? `Goal paused after ${emptyNotice.count} consecutive empty assistant turns.`
-                : "Goal assistant returned no meaningful activity; retrying once."
+                : "Goal assistant returned no meaningful activity; recovery is scheduled."
               await showGoalToast(client, message, "warning")
             }
           }
@@ -621,7 +672,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
         }),
       }),
       opencode_goal_complete: tool({
-        description: "Attempt verified completion. Host contracts run independently and semantic requirements are audited by a read-only verifier. Completion fails closed. If verifier infrastructure is unavailable, the Goal is paused instead of retry-looping.",
+        description: "Attempt verified completion. Host contracts run independently and semantic requirements are audited by a read-only verifier. Completion fails closed. Persistent goals retry unavailable verification without claiming success.",
         args: { summary: tool.schema.string() },
         execute: async (args: any, context: any) => {
           const startingSteeringEpoch = currentSteeringEpoch(context.sessionID)
@@ -630,6 +681,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           const stale = staleToolReason(context, snapshot)
           if (stale) return stale
           if (snapshot.status !== "active") return `Completion rejected: goal status is ${snapshot.status}.`
+          const candidate = snapshot.persistent ? await shellGitWorkspaceMarker(directory) : undefined
           let evaluated = await runConfiguredChecks(snapshot, directory)
           evaluated = await verifyDeclaredFiles(evaluated, directory)
           if (currentSteeringEpoch(context.sessionID) !== startingSteeringEpoch) {
@@ -654,7 +706,8 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
                 }
                 const merged = settleCurrentProgress(mergeAuditEvaluation(latest, evaluated))
                 const reason = `Independent semantic verification unavailable: ${error.message}`
-                await save(pauseGoal(merged, reason))
+                await save(merged.persistent ? recoverPersistentGoal(merged, reason, Date.now(), "semantic_verifier") : pauseGoal(merged, reason))
+                if (merged.persistent) return `Completion not verified: ${error.message}. Goal remains active and will retry automatically; verification recovery is scheduled.`
                 return `Completion not verified: ${error.message}. Goal paused to prevent repeated verifier retries. Use /goal resume to retry after the verifier/provider recovers.`
               })
             }
@@ -668,7 +721,8 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
             if (!latest || latest.id !== snapshot.id || latest.revision !== snapshot.revision || latest.status !== "active") {
               return "Completion rejected: goal changed, paused, or stopped while verification was running."
             }
-            const merged = settleCurrentProgress(mergeAuditEvaluation(latest, evaluated))
+            if (candidate !== undefined && candidate !== await shellGitWorkspaceMarker(directory)) return "Completion rejected: workspace changed during verification. Goal remains in effect; reverify the current candidate."
+            const merged = verifyArithmeticObjective(settleCurrentProgress(mergeAuditEvaluation(latest, evaluated)))
             const result = completeGoal(merged, args.summary)
             await save(result.goal)
             return result.audit.ok ? "Goal completed with host and verifier-backed evidence." : `Completion rejected:\n- ${result.audit.reasons.join("\n- ")}`
@@ -676,7 +730,7 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
         },
       }),
       opencode_goal_wait_for_user: tool({
-        description: "Put the active Goal to sleep when required progress genuinely depends on new user input, approval, credentials, production/manual action, or external data the agent cannot obtain. Use this instead of repeatedly polling the same unchanged dependency. The Goal stays persisted and does not auto-continue until the user resumes it.",
+        description: "Report required input, approval, credentials or external dependency. Persistent goals remain enabled and schedule another check. Never treat an impossible goal or missing input as success; continue independent required work.",
         args: {
           reason: tool.schema.string(),
           needed: tool.schema.string().optional(),
@@ -689,11 +743,12 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           if (goal.status !== "active") return `Waiting-user rejected: goal status is ${goal.status}.`
           const next = waitForUserGoal(goal, args)
           await save(next)
+          if (next.persistent) return "Dependency recorded. Goal remains in effect and another check is scheduled. Continue independent required work; never bypass permissions."
           return "Goal is waiting for user input. End this assistant turn without more project work or polling; autonomous Goal continuation is asleep until the user resumes it."
         }),
       }),
       opencode_goal_blocked: tool({
-        description: "Report a genuine blocker. The same blocker must recur on three distinct goal turns before the goal becomes blocked.",
+        description: "Report a genuine blocker. Persistent goals record it and schedule recovery; blockers never authorize success or changing the goal.",
         args: {
           reason: tool.schema.string(),
           needed: tool.schema.string().optional(),
@@ -704,8 +759,10 @@ export default async function OpenCodeGoalPlugin(input: any, options: OpenCodeGo
           if (!goal) return "No active goal."
           const stale = staleToolReason(context, goal)
           if (stale) return stale
+          if (goal.status !== "active") return `Blocker report rejected: goal is ${goal.status}. Only the user can resume it.`
           const next = reportBlocker(goal, { turnID: context.messageID ?? context.callID ?? String(Date.now()), ...args })
           await save(next)
+          if (next.persistent) return "Blocker recorded. Goal remains in effect. Continue other required work or try a different permitted approach; recovery is scheduled for repeated blockers."
           const count = next.blockerAudit?.consecutiveTurns ?? 0
           return next.status === "blocked" ? `Goal blocked after ${count} repeated blocker turns.` : `Blocker recorded (${count}/3). Keep working on other useful paths if possible.`
         }),

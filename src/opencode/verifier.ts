@@ -100,7 +100,8 @@ function verifierHostEvidence(goal: GoalState, currentMessageID?: string): Evide
   ]
   const persisted = goal.evidence
     .filter((item) => item.goalRevision === goal.revision && item.trust === "host" && item.passed === true)
-    .slice(-28)
+    // Keep evidence for every requirement. Context overflow fails closed and
+    // enters recovery; silently dropping required proof is not acceptable.
   return [...runtime, ...persisted]
 }
 

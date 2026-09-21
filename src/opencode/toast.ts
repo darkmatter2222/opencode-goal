@@ -1,3 +1,4 @@
+import { withDeadline } from "../runtime/deadline.js"
 export type GoalToastVariant = "info" | "success" | "warning" | "error"
 
 /**
@@ -12,14 +13,14 @@ export async function showGoalToast(
   const showToast = client?.tui?.showToast
   if (typeof showToast !== "function") return
   try {
-    await showToast.call(client.tui, {
+    await withDeadline(showToast.call(client.tui, {
       body: {
         title: "OpenCode Goals",
         message,
         variant,
         duration: 3000,
       },
-    })
+    }), 1_000, "Goal notification")
   } catch {
     // UI notifications are deliberately fail-open; persistence/verification is authoritative.
   }

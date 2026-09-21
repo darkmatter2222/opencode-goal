@@ -11,7 +11,7 @@ import { observeTodoPlan, todoPlanIsCurrent } from "../dist/runtime/todo-plan.js
 
 async function readOnlyGoal(root) {
   const dir = path.join(root, ".opencode", "goals")
-  const files = await readdir(dir)
+  const files = (await readdir(dir)).filter(file => file.endsWith(".json"))
   assert.equal(files.length, 1)
   return JSON.parse(await readFile(path.join(dir, files[0]), "utf8"))
 }
@@ -51,7 +51,7 @@ test("auto-stalled Goal keeps steering text intact until model resume is activat
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-auto-stall-steering-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     const store = new GoalStore(root)
     const reason = "Paused after 3 continuation turns without host-observed progress."
 
@@ -88,7 +88,7 @@ test("explicit user pause is not silently resumed by an unrelated work instructi
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-explicit-pause-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
 
     await command(hooks, "finish the project")
     await command(hooks, "pause")

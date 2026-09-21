@@ -354,8 +354,8 @@ async function main() {
     const createRequest = startCommand("ship canary --max-turns 8")
     const created = await waitForGoal(
       workspace,
-      (state) => state.sessionID === sessionID && state.objective === "ship canary" && state.status === "paused" && state.stalledTurns >= 3,
-      "create + idle continuation + no-progress pause",
+      (state) => state.sessionID === sessionID && state.objective === "ship canary" && state.status === "active" && state.persistent === true && state.stalledTurns >= 3 && state.infrastructureRecovery?.nextRetryAt > Date.now(),
+      "create + idle continuation + persistent no-progress recovery",
       diagnostics,
     ).catch(async (error) => {
       createRequest.controller.abort()
@@ -365,13 +365,16 @@ async function main() {
     await settle(createRequest, "create")
     assert.equal(created.revision, 1)
     assert.ok(created.usage.turns >= 1)
+    // Observe an actual retry after the persisted deadline, not just a state label.
+    await waitForGoal(workspace, state => state.status === "active" && state.usage.turns > created.usage.turns,
+      "automatic continuation after no-progress backoff", diagnostics, 45_000)
     const afterCreate = provider.stats.chatRequests
     assert.ok(afterCreate >= 3, `expected initial turn plus continuations, got ${afterCreate}`)
 
     const editRequest = startCommand("edit ship canary v2")
     const edited = await waitForGoal(
       workspace,
-      (state) => state.sessionID === sessionID && state.revision === 2 && state.objective === "ship canary v2" && state.status === "paused" && state.stalledTurns >= 3,
+      (state) => state.sessionID === sessionID && state.revision === 2 && state.objective === "ship canary v2" && state.status === "active" && state.persistent === true && state.stalledTurns >= 3 && state.infrastructureRecovery?.nextRetryAt > Date.now(),
       "edit + renewed continuation lifecycle",
       diagnostics,
     ).catch(async (error) => {

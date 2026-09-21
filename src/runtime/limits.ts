@@ -1,3 +1,4 @@
+import { recoverPersistentGoal } from "./persistence-policy.js"
 import { pauseGoal } from "../domain/goal.js"
 import type { GoalState } from "../domain/types.js"
 import { modelContextCompactionReason } from "./model-context.js"
@@ -99,6 +100,7 @@ export function hostUsageLimitReason(status: HostRetryStatus): string | undefine
 
 export function markUsageLimited(goal: GoalState, reason: string, now = Date.now()): GoalState {
   if (goal.status !== "active") return goal
+  if (goal.persistent) return recoverPersistentGoal(goal, reason, now)
   return { ...goal, status: "usage_limited", stopReason: concise(reason), updatedAt: now }
 }
 
@@ -133,6 +135,7 @@ export function fatalProviderReason(error: HostSessionError): string | undefined
 
 export function pauseForFatalProviderError(goal: GoalState, reason: string, now = Date.now()): GoalState {
   if (goal.status !== "active") return goal
+  if (goal.persistent) return recoverPersistentGoal(goal, reason, now)
   const paused = pauseGoal(goal, concise(reason), now)
   const { infrastructureRecovery: _infrastructureRecovery, skipNextStallCheck: _skipNextStallCheck, ...rest } = paused
   return rest

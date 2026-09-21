@@ -85,7 +85,7 @@ test("successful compaction guarantees exactly one Goal continuation without req
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-compaction-continuation-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndBindGoal(hooks)
 
     const compact = { context: [] }
@@ -118,7 +118,7 @@ test("post-compaction continuation still obeys delegated-task deferral", async (
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-compaction-task-deferral-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndBindGoal(hooks)
 
     await hooks["tool.execute.before"]({
@@ -152,7 +152,7 @@ test("inactive Goals do not acquire compaction continuation ownership", async ()
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-compaction-inactive-"))
   try {
     const fake = fakeClient()
-    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root })
+    const hooks = await OpenCodeGoalPlugin({ client: fake.client, directory: root }, { persistent: false })
     await createAndBindGoal(hooks)
 
     const pause = { parts: [{ type: "text", text: "pause" }] }

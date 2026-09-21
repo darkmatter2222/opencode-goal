@@ -2,6 +2,22 @@
 
 All notable changes to **OpenCode Goals** are documented here.
 
+## 2.0.0-beta.1 — 2026-09-21
+
+First Relentless implementation. Source-install development beta.
+
+Review hardening: preserve provider cooldowns across controls and edits; scope retry to one session; prevent duplicate active-resume dispatch; invalidate stale queued model-resume intent; drain recovery timers on disposal; fix asynchronous test readers/cleanup; add generated command reference, documentation checks and complete developer/operations guides.
+
+- Enable persistent pursuit for newly created public-plugin goals; keep legacy bounded mode explicitly selectable.
+- Replace stall, empty-response, repeated-blocker and model-requested waiting surrender with durable retry intent.
+- Add periodic idle-goal reconciliation, restart recovery, dispatch leases, bounded SDK waits, response-error normalization and jittered recovery.
+- Add discoverable command aliases, generated contextual help, proof/why/attempts/retry controls and a capability-detected native menu.
+- Add an authenticated loopback headless host runner with crash restart.
+- Preserve required evidence, retain multi-round ownership, detect repeated dirty-file changes and reject changed Git candidates during completion.
+- Add an exact integer equation oracle; semantic agreement cannot prove a false supported equation.
+- Rename package identity and migrate the known upstream registration; publishing is manual and beta-only.
+- Add persistent-mode regression tests while retaining bounded-mode compatibility tests.
+
 ## 1.3.33 — 2026-09-20
 
 Goal empty-turn fail-safe release.
