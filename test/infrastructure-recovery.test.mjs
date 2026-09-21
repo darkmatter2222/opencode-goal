@@ -113,6 +113,7 @@ test("legacy 1.3.25 verifier dead-ends migrate narrowly while real pauses/blocke
 
 test("verifier outage stays active, suppresses immediate idle, and wakes automatically after cooldown", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-infra-verifier-"))
+  let hooks
   let parentPrompts = 0
   try {
     const client = {
@@ -134,7 +135,7 @@ test("verifier outage stays active, suppresses immediate idle, and wakes automat
         async delete() { return true },
       },
     }
-    const hooks = await recoveryPlugin(root, client)
+    hooks = await recoveryPlugin(root, client)
     await createGoal(hooks)
 
     const result = await hooks.tool.opencode_goal_complete.execute(
@@ -156,12 +157,14 @@ test("verifier outage stays active, suppresses immediate idle, and wakes automat
     assert.equal(dispatched.infrastructureRecovery.nextRetryAt, 0)
     assert.equal(dispatched.stalledTurns, 0, "infrastructure-only recovery must not spend the no-progress budget")
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await hooks?.event({ event: { type: "server.instance.disposed", properties: {} } })
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
   }
 })
 
 test("transient continuation transport failure is recovered instead of permanently pausing", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-infra-dispatch-"))
+  let hooks
   let promptCalls = 0
   try {
     const client = {
@@ -177,7 +180,7 @@ test("transient continuation transport failure is recovered instead of permanent
         async create() { return { data: { id: "unused-verifier" } } },
       },
     }
-    const hooks = await recoveryPlugin(root, client)
+    hooks = await recoveryPlugin(root, client)
     await createGoal(hooks)
 
     await hooks.event({ event: { type: "session.idle", properties: { sessionID: "parent" } } })
@@ -190,16 +193,19 @@ test("transient continuation transport failure is recovered instead of permanent
     assert.ok(recovering.infrastructureRecovery.nextRetryAt > 0)
 
     await waitFor(() => promptCalls === 2)
+    await waitFor(async () => !(await stateFor(root)).dispatchLease)
     const recovered = await stateFor(root)
     assert.equal(recovered.status, "active")
     assert.equal(recovered.stalledTurns, stalledBeforeRetry, "transport recovery must not look like another stalled coding turn")
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await hooks?.event({ event: { type: "server.instance.disposed", properties: {} } })
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
   }
 })
 
 test("recovery never injects a second prompt while OpenCode still owns retry status", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "opencode-goal-infra-host-retry-"))
+  let hooks
   let parentPrompts = 0
   let liveStatus = "retry"
   try {
@@ -215,7 +221,7 @@ test("recovery never injects a second prompt while OpenCode still owns retry sta
         async delete() { return true },
       },
     }
-    const hooks = await recoveryPlugin(root, client, { retryWatchdogMs: 1000 })
+    hooks = await recoveryPlugin(root, client, { retryWatchdogMs: 1000 })
     await createGoal(hooks)
     await hooks.tool.opencode_goal_complete.execute(
       { summary: "done" },
@@ -226,7 +232,11 @@ test("recovery never injects a second prompt while OpenCode still owns retry sta
     assert.equal(parentPrompts, 0, "provider retry ownership must suppress duplicate Goal continuation")
     liveStatus = "idle"
     await waitFor(() => parentPrompts === 1)
+    // A prompt receipt precedes the core's asynchronous lease cleanup.
+    // Await that persisted write before removing the test workspace.
+    await waitFor(async () => !(await stateFor(root)).dispatchLease)
   } finally {
-    await rm(root, { recursive: true, force: true })
+    await hooks?.event({ event: { type: "server.instance.disposed", properties: {} } })
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
   }
 })
